@@ -1,4 +1,3 @@
-
 #include <stdio.h> 
 #include <netdb.h> 
 #include <netinet/in.h> 
@@ -11,53 +10,62 @@
 #define FLEN 256
 #define PORT 1234  
 
- 
-void compile(int sockfd)
+
+int get_name(int sockfd, char* serv_name)
 {
-    //get name of file
-    char client_name[LEN]; 
-    int n;
-    if(read(sockfd, client_name, sizeof(client_name)))
+    char client_name[LEN];
+    if(read(sockfd, client_name, LEN))
         write(sockfd, "the name has been recieved\n", sizeof("the name has been recieved\n"));
     else
     {
         write(sockfd, "error while recieving data\n", sizeof("error while recieving data\n"));
-        exit(0);
+        fputs("error while recieving data\n", stderr);
+        return 1;
     }
-    printf("From client: name of file: %s\n", client_name); 
+    printf("From client: name of file: %s\n", client_name);
 
-    //create new file and write recieved information 
-    char serv_name[FLEN] = "serv_";
-    strcat(serv_name, client_name);
+    strncat(serv_name, client_name, (LEN - 6));
+    return 0;
+}
+
+int get_file(int sockfd, char* serv_name)
+{
     FILE* file_ptr = fopen(serv_name, "w"); 
+    char fbuff[FLEN];
+
     if(file_ptr == NULL)
     {
         fputs("unable to open the file\n", stderr);
-        exit(1);
+        return 1;
     }
-    printf("file opened successfully\n");
+    printf("file was opened successfully\n");
 
     //recieving file
-    char fbuff[FLEN];
     read(sockfd, fbuff, sizeof(fbuff));
     while(strncmp("^^^^^", fbuff, 5))
     {
         fputs(fbuff, file_ptr);
-        //fputs(fbuff, stdout);
         read(sockfd, fbuff, sizeof(fbuff));
     }
-    printf("file has been recieved\n");
+    printf("file was recieved\n");
     fclose(file_ptr);
+    return 0;
+}
 
-    //forming an executable command
-    char command[LEN] = {"gcc -o out "};
+// int get_flags()
+// {
+
+// }
+
+void compile(int sockfd, char* serv_name)
+{
+    int status;
+    char ans[FLEN];
+    char command[FLEN] = {"gcc -o out "};
     strcat(command, serv_name);
-    //printf("%s\n", command);
 
     //compile and send result
-    int status = system(command);
-    char ans[256];
-
+    status = system(command);
     printf("status of compiling: %d\n", status);
     sprintf(ans, "status of compiling: %d\n", status);
     write(sockfd, ans, sizeof(ans));
@@ -67,6 +75,7 @@ int main()
 { 
     int sockfd, connfd; 
     struct sockaddr_in servaddr; 
+    char serv_name[FLEN] = "serv_";
   
     // socket create and verification 
     sockfd = socket(AF_INET, SOCK_STREAM, 0); 
@@ -107,7 +116,13 @@ int main()
     else
         printf("server acccept the client...\n"); 
   
-    compile(connfd); 
+    if(get_name(connfd, serv_name) != 0)
+        return 1;
+
+    if(get_file(connfd, serv_name) != 0)
+        return 1;
+
+    compile(connfd, serv_name);
 
     close(sockfd); 
 } 

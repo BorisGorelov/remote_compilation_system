@@ -8,113 +8,114 @@
 #define FLEN 256
 #define PORT 1234  
 
-
-void send_file(int sockfd)
+void get_answer(int sockfd)
 {
-    //send header
-    char buff[LEN]; 
+    char ans[FLEN]; 
+    read(sockfd, ans, sizeof(ans)); 
+    printf("From Server: %s\n", ans);
+}
 
-    printf("Enter the string like: === File <No>. <filename>\n");
-    fgets(buff, sizeof(buff), stdin);
-    buff[strcspn(buff, "\n")] = '\0'; //fgets write \n to buff, due to strcspn change it to \0
+int send_file(int sockfd, char* name)
+{
+    FILE* file_ptr = fopen(name, "r");
+    char fbuff[FLEN];
 
-    //put <filename> in name
-    char name[LEN];
+    if(file_ptr == NULL)
+    {
+        fputs("unable to open the file\n", stderr);
+        return 1;
+    }
+
+    while(fgets(fbuff, sizeof(fbuff), file_ptr))
+        write(sockfd, fbuff, sizeof(fbuff));
+        
+    write(sockfd, "^^^^^", sizeof("^^^^^"));
+    fclose(file_ptr);
+
+    printf("File has been sent\n");
+    get_answer(sockfd);
+
+    return 0;
+}
+
+// int send_flags()
+// {
+
+// }
+
+int send_name(int sockfd, char* name)
+{
+    char header[LEN]; 
     int i = 0;
     int count = 0;
-    while(i < strlen(buff))
+
+    printf("Enter the string like: === File <No>. <filename>\n");
+    fgets(header, sizeof(header), stdin);
+    header[strcspn(header, "\n")] = '\0';
+
+    //put <filename> in name
+    while(i < strlen(header))
     {
-        if (buff[i] == ' ')
+        if (header[i] == ' ')
         {
-            bzero(name, sizeof(name));
+            bzero(name, LEN);
             count = 0;
             i++;
             continue;
         }
-        name[count] = buff[i];
+        name[count] = header[i];
         i++;
         count++;
     }
 
     //send name to server
-    if(strlen(name))
-        write(sockfd, name, sizeof(name)); 
-    else
+    if(strlen(name) == 0)
     {
         printf("wrong header\n");
-        exit(1);
+        return 1;
     }
-
-    //answer about file creation
-    char ans[256]; 
-    read(sockfd, ans, sizeof(ans)); 
-    printf("From Server: %s\n", ans);
-     
-    //send file
-    FILE* file_ptr = fopen(name, "r");
-    if(file_ptr == NULL)
-    {
-        fputs("unable to open the file\n", stderr);
-        exit(1);
-    }
-
-    char fbuff[FLEN];
-
-    while(fgets(fbuff, sizeof(fbuff), file_ptr))
-    {
-        write(sockfd, fbuff, sizeof(fbuff));
-        //fputs(fbuff, stdout);
-    }
-        
-    write(sockfd, "^^^^^", sizeof("^^^^^"));
-    fclose(file_ptr);
-    printf("file has been sent\n");
-
-    //file have been already sent, waiting for response
-    bzero(buff, sizeof(buff)); 
-    read(sockfd, buff, sizeof(buff)); 
-    printf("From Server: %s\n", buff);
-
+    
+    write(sockfd, name, LEN);
+    get_answer(sockfd);
+    return 0;
 }
   
 int main() 
 { 
-    int sockfd, connfd; 
-
-    // describes socket for working with IP protocol
-    struct sockaddr_in servaddr, cli; 
+    int sockfd; 
+    struct sockaddr_in servaddr; 
+    char file_name[LEN];
   
-    // socket create and varification 
-    // af_inet => ipv4
-    // SOCK_STREAM  => Provides  sequenced,  reliable,  two-way, 
-    // connection-based byte streams.
     sockfd = socket(AF_INET, SOCK_STREAM, 0); 
-    if (sockfd == -1) { 
+    if (sockfd == -1) 
+    { 
         printf("socket creation failed...\n"); 
-        exit(0); 
+        return 1;
     } 
     else
         printf("Socket successfully created, socket = %d\n", sockfd); 
-    //bzero(&servaddr, sizeof(servaddr)); 
   
-    // assign IP, PORT 
+
     servaddr.sin_family = AF_INET; 
-
-    //IPv4 numbers-and-dots notation into  binary  data  in network  byte  order
     servaddr.sin_addr.s_addr = inet_addr("127.0.0.1"); 
-
-    //from host byte order to network
     servaddr.sin_port = htons(PORT); 
   
     // connect the client socket to server socket 
-    if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr))) { 
+    if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr))) 
+    { 
         printf("connection with the server failed...\n"); 
-        exit(0); 
+        return 2;
     } 
     else
         printf("connected to the server..\n"); 
    
-    send_file(sockfd); 
-  
+    if (send_name(sockfd, file_name) != 0) 
+        return 1;
+
+    if (send_file(sockfd, file_name) != 0)
+        return 1;
+
     close(sockfd); 
+
+    return 0;
 } 
