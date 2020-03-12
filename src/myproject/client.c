@@ -21,6 +21,7 @@ int send_file(int sockfd, char* name)
 {
     FILE* file_ptr = fopen(name, "r");
     char fbuff[FLEN];
+    char buf[LEN];
 
     if(file_ptr == NULL)
     {
@@ -28,53 +29,31 @@ int send_file(int sockfd, char* name)
         return 1;
     }
 
-    while(fgets(fbuff, sizeof(fbuff), file_ptr))
+    //send name, get response
+    write(sockfd, name, sizeof(name));
+    read(sockfd, buf, sizeof(buf));
+
+    if(strncmp("1.", buf, 2) == 0)
+    {
+        fputs("error sending the name to the server\n", stderr);
+        return 2;
+    }
+    else if(strncmp("0.", buf, 2) == 0)
+    {
+        while(fgets(fbuff, sizeof(fbuff), file_ptr))
         write(sockfd, fbuff, sizeof(fbuff));
         
-    write(sockfd, "^^^^^", sizeof("^^^^^"));
-    fclose(file_ptr);
+        write(sockfd, "^^^^^", sizeof("^^^^^"));
+        fclose(file_ptr);
 
-    printf("File has been sent\n");
-    get_answer(sockfd);
-
-    return 0;
-}
-
-int send_name(int sockfd, char* name)
-{
-    char header[LEN]; 
-    int i = 0;
-    int count = 0;
-
-    printf("Enter the string like: === File <No>. <filename>\n");
-    fgets(header, sizeof(header), stdin);
-    header[strcspn(header, "\n")] = '\0';
-
-    //put <filename> in name
-    while(i < strlen(header))
-    {
-        if (header[i] == ' ')
-        {
-            bzero(name, LEN);
-            count = 0;
-            i++;
-            continue;
-        }
-        name[count] = header[i];
-        i++;
-        count++;
+        printf("File has been sent\n");
+        return 0;
     }
-
-    //send name to server
-    if(strlen(name) == 0)
+    else 
     {
-        printf("wrong header\n");
-        return 1;
+        fputs("error: unexpected response\n", stderr);
+        return 3;
     }
-    
-    write(sockfd, name, LEN);
-    get_answer(sockfd);
-    return 0;
 }
 
 int get_errors(int sockfd)
@@ -129,11 +108,12 @@ int print_errors(int sockfd)
 
 int main(int argc, char** argv) 
 { 
-    int sockfd, i, check; 
+    int sockfd, number_of_files, i, check; 
+    int flag = 0; //tracking whether the user specified a port and ip
     struct sockaddr_in servaddr; 
-    char file_name[LEN];
     long int PORT = 1234;
     char IP[LEN] = "127.0.0.1";
+    char buf[LEN];
 
     //check if user want to change default ip or port
     for (i = 1; i < argc; ++i)
@@ -141,6 +121,7 @@ int main(int argc, char** argv)
         if(strncmp(argv[i], "-d", 2) == 0 && i < argc - 1)
         {
             check = snprintf(IP, 16, "%s", argv[i+1]);
+            flag++;
             if(check <= 0 || check >= 16)
             {
                 fprintf(stderr, "fatal error. wrong ip.\n");
@@ -150,13 +131,13 @@ int main(int argc, char** argv)
         if(strncmp(argv[i], "-p", 2) == 0 && i < argc - 1)
         {
             PORT = strtol(argv[i+1], NULL, 10);
+            flag++;
             if(PORT < 0 || PORT > 65535)
             {
                 fprintf(stderr, "fatal error. wrong port.\n");
                 return 2;
             }
-        }
-        
+        }   
     }
 
     // socket creation and verification
@@ -187,11 +168,35 @@ int main(int argc, char** argv)
     else
         printf("connected to the server.\n"); 
    
-    if (send_name(sockfd, file_name) != 0) 
-        return 6;
+    //find position of first filename
+    switch(flag)
+    {
+        case 0: 
+            i = 1;
+            break;
+        case 1:
+            i = 3;
+            break;
+        case 2:
+            i = 5;
+            break;
+        default:
+            fprintf(stderr, "an unexpected value of a variable\n");
+            return 6;
+    }
 
-    if (send_file(sockfd, file_name) != 0)
-        return 6;
+    //send number of files
+    number_of_files = argc - flag * 2 - 1;
+    printf("number of files: %d, i = %d, argc = %d\n", number_of_files, i, argc);
+    sprintf(buf, "%d", number_of_files);
+    write(sockfd, buf, sizeof(buf));
+
+    while(i < argc)
+    {
+        if(send_file(sockfd, argv[i]) != 0)
+            return 6;
+        i++;
+    }
 
     if (get_errors(sockfd) != 0)
         return 6;

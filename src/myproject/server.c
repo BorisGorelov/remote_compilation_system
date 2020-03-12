@@ -16,17 +16,24 @@
 int get_name(int sockfd, char* serv_name)
 {
     char client_name[LEN];
+    int check;
+
     if(read(sockfd, client_name, LEN))
-        write(sockfd, "the name has been recieved\n", sizeof("the name has been recieved\n"));
+        write(sockfd, "0. the name is received.\n", sizeof("0. the name is received.\n"));
     else
     {
-        write(sockfd, "error while recieving data\n", sizeof("error while recieving data\n"));
-        fputs("error while recieving data\n", stderr);
+        write(sockfd, "1. error occurred while recieving name\n", sizeof("1. error occurred while recieving name\n"));
+        fputs("error while recieving name\n", stderr);
         return 1;
     }
     printf("From client: name of file: %s\n", client_name);
 
-    strncat(serv_name, client_name, (LEN - 6));
+    check = snprintf(serv_name, LEN + 5, "serv_%s", client_name);
+    if (check <= 0 || check >= LEN + 5)
+    {
+        fputs("error occurred while creating serv_name\n", stderr);
+        return 1;
+    }
     return 0;
 }
 
@@ -54,11 +61,6 @@ int get_file(int sockfd, char* serv_name)
     fclose(file_ptr);
     return 0;
 }
-
-// int get_flags()
-// {
-
-// }
 
 void get_answer(int sockfd)
 {
@@ -96,8 +98,8 @@ int compile(int sockfd, char* serv_name)
     int cx;
     char ans[FLEN];
     char command[FLEN] = "gcc -o out ";
-    cx = snprintf(command+strlen(command), FLEN - strlen(command), "%s ", serv_name);
-    if (cx <= 0 || cx > FLEN - strlen(command))
+    cx = snprintf(command+strlen(command), FLEN - strlen(command), "*.c ");
+    if (cx <= 0 || cx >= FLEN - strlen(command))
     {
         fprintf(stderr, "an error occurred while creating an executable command\n");
         sprintf(ans, "an error occurred while creating an executable command\n");
@@ -106,7 +108,7 @@ int compile(int sockfd, char* serv_name)
     }
 
     cx = snprintf(command+strlen(command), FLEN - strlen(command), "> errors 2>&1");
-    if (cx <= 0 || cx > FLEN - strlen(command))
+    if (cx <= 0 || cx >= FLEN - strlen(command))
     {
         fprintf(stderr, "an error occurred while creating an executable command\n");
         sprintf(ans, "an error occurred while creating an executable command\n");
@@ -133,16 +135,22 @@ int compile(int sockfd, char* serv_name)
   
 int main(int argc, char** argv) 
 { 
-    long int PORT = 1234;
+    long int i, number_of_files, PORT = 1234;
     int sockfd, connfd; 
     struct sockaddr_in servaddr; 
     char serv_name[FLEN] = "serv_";
-
-    printf("hi1\n");
+    char buf[LEN];
 
     if (argc > 1 && strncmp(argv[1], "-p", 2) == 0)
+    {
         PORT = strtol(argv[2], NULL, 10);
-  
+        if(PORT < 0 || PORT > 65535)
+        {
+            fprintf(stderr, "fatal error. wrong port.\n");
+            return 2;
+        }
+    }
+
     // socket creation and verification 
     sockfd = socket(AF_INET, SOCK_STREAM, 0); 
     if (sockfd < 0) 
@@ -187,11 +195,29 @@ int main(int argc, char** argv)
     else
         printf("server acccept the client.\n"); 
   
-    if (get_name(connfd, serv_name) != 0)
-        return 5;
+    //get number of files
+    read(connfd, buf, sizeof(buf));
+    number_of_files = strtol(buf, NULL, 10);
+    if(number_of_files < 0)
+    {
+        fprintf(stderr, "fatal error: wrong number of files\n");
+        return 6;
+    }
 
-    if (get_file(connfd, serv_name) != 0)
-        return 5;
+    //getting files
+    system("mkdir source; cd source");
+    i = 0;
+    printf("number of files: %d, i = %d, argc = %d\n", number_of_files, i, argc);
+    while(i < number_of_files)
+    {
+        bzero(serv_name, sizeof(serv_name));
+        if (get_name(connfd, serv_name) != 0)
+            return 5;
+
+        if (get_file(connfd, serv_name) != 0)
+            return 5;
+        i++;
+    }    
 
     if (compile(connfd, serv_name) != 0)
         return 5;
