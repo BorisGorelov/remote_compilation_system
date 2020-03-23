@@ -1,4 +1,6 @@
 #include "source.h"
+#define ANS_OPEN_ERR_FILE "unable to open the file with errors\n"
+#define ANS_ERR_RECEIVED "file with errors was recieved\n"
 
 int send_file(int sockfd, char* name)
 {
@@ -8,7 +10,7 @@ int send_file(int sockfd, char* name)
 
     if(file_ptr == NULL)
     {
-        fputs("unable to open the file\n", stderr);
+        fprintf(stderr, "unable to open the file %s\n", name);
         return 1;
     }
 
@@ -49,8 +51,8 @@ int get_errors(int sockfd)
 
     if(file_ptr == NULL)
     {
-        fputs("unable to open the file with errors\n", stderr);
-        write(sockfd, "unable to open the file with errors\n", sizeof("unable to open the file with errors\n"));
+        fputs(ANS_OPEN_ERR_FILE, stderr);
+        write(sockfd, ANS_OPEN_ERR_FILE, sizeof(ANS_OPEN_ERR_FILE));
         return 1;
     }
 
@@ -74,7 +76,7 @@ int print_errors(int sockfd)
     char fbuff[FLEN];
     if (file_ptr == NULL)
     {
-        fprintf(stderr, "unable to open the file with received errors\n");
+        fputs("unable to open the file with received errors\n", stderr);
         return 1;
     }
 
@@ -89,7 +91,7 @@ int print_errors(int sockfd)
     while(fgets(fbuff, sizeof(fbuff), file_ptr))
         fputs(fbuff, stdout);
 
-    write(sockfd, "file with errors was recieved\n", sizeof("file with errors was recieved\n"));
+    write(sockfd, ANS_ERR_RECEIVED, sizeof(ANS_ERR_RECEIVED));
     fclose(file_ptr);
     return 0;
 }
@@ -104,15 +106,15 @@ int main(int argc, char** argv)
     int sockfd, number_of_files, i, check; 
     int flag = 0; //tracking whether the user specified a port and ip
     struct sockaddr_in servaddr; 
-    long int PORT = 1234;
-    char IP[LEN] = "127.0.0.1";
+    long int PORT = RCC_PORT_DEFAULT;
+    char IP[LEN] = RCC_IP_DEFAULT;
     char buf[FLEN];
 
     setlocale(LC_ALL, "");
     if(argc < 2 /*|| second option is -h*/)
     {
         usage();
-        return 7;
+        return RCC_WRONG_ARG;
     }
 
     //check if user want to change default ip or port
@@ -124,7 +126,7 @@ int main(int argc, char** argv)
             flag++;
             if(check <= 0 || check >= 16)
             {
-                fprintf(stderr, "fatal error. wrong ip.\n");
+                fputs("fatal error. wrong ip.\n", stderr);
                 return 2;
             }
         }
@@ -134,7 +136,7 @@ int main(int argc, char** argv)
             flag++;
             if(PORT < 0 || PORT > 65535)
             {
-                fprintf(stderr, "fatal error. wrong port.\n");
+                fputs("fatal error. wrong port.\n", stderr);
                 return 2;
             }
         }   
@@ -144,8 +146,8 @@ int main(int argc, char** argv)
     sockfd = socket(AF_INET, SOCK_STREAM, 0); 
     if (sockfd < 0) 
     { 
-        fprintf(stderr, "fatal error: socket creation failed.\n"); 
-        return 3;
+        fputs("fatal error: socket creation failed.\n", stderr); 
+        return RCC_SOCK_FAIL;
     } 
     else
         printf("Socket successfully created, socket = %d\n", sockfd); 
@@ -157,14 +159,14 @@ int main(int argc, char** argv)
     if(inet_pton(AF_INET, IP, &servaddr.sin_addr.s_addr) <= 0)
     {
         fprintf(stderr, "fatal error: inet_pton error for %s\n", IP);
-        return 4;
+        return RCC_INETPTON_ERROR;
     }     
   
     // connect the client socket to server socket 
     if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) < 0) 
     { 
-        fprintf(stderr, "connection with the server failed...\n"); 
-        return 5;
+        fputs("connection with the server failed...\n", stderr); 
+        return RCC_CONNECTION_FAIL;
     } 
     else
         printf("connected to the server.\n"); 
@@ -182,8 +184,8 @@ int main(int argc, char** argv)
             i = 5;
             break;
         default:
-            fprintf(stderr, "an unexpected value of a variable\n");
-            return 6;
+            fprintf(stderr, "an unexpected value of a variable (i = %d)\n", i);
+            return RCC_UNEXPEC_VAL;
     }
 
     //send number of files
@@ -194,15 +196,15 @@ int main(int argc, char** argv)
     while(i < argc)
     {
         if(send_file(sockfd, argv[i]) != 0)
-            return 6;
+            return RCC_SEND_FAIL;
         i++;
     }
 
     if (get_errors(sockfd) != 0)
-        return 7;
+        return RCC_RECEIVE_FAIL;
 
     if (print_errors(sockfd) != 0)
-        return 8;
+        return RCC_PRINT_FAIL;
 
     close(sockfd); 
 

@@ -2,6 +2,9 @@
 #include "source.h"
 #define ANS0 "0. the name is received.\n"
 #define ANS1 "1. error occurred while recieving name\n"
+#define ANS_ERR_EXE "an error occurred while creating an executable command\n"
+#define ANS_COMPILE_0 "compilation complited successfully\n"
+#define ANS_COMPILE_1 "compilation failed\n"
 
 int get_name(int sockfd, char* serv_name)
 {
@@ -34,8 +37,9 @@ int get_file(int sockfd, char* serv_name)
 
     if(file_ptr == NULL)
     {
-        fputs("unable to open the file\n", stderr);
-        write(sockfd, "unable to open the file\n", sizeof("unable to open the file\n"));
+        sprintf(fbuff, "unable to open file %s\n", serv_name);
+        fprintf(stderr, "%s", fbuff);
+        write(sockfd, fbuff, FLEN);
         return 1;
     }
     printf("file was opened successfully\n");
@@ -88,8 +92,8 @@ int compile(int sockfd, char* serv_name)
     cx = snprintf(command+strlen(command), FLEN - strlen(command), "*.c ");
     if (cx <= 0 || cx >= FLEN - strlen(command))
     {
-        fprintf(stderr, "an error occurred while creating an executable command\n");
-        sprintf(ans, "an error occurred while creating an executable command\n");
+        fputs(ANS_ERR_EXE, stderr);
+        sprintf(ans, ANS_ERR_EXE);
         write(sockfd, ans, sizeof(ans));
         return 1;
     }
@@ -97,8 +101,8 @@ int compile(int sockfd, char* serv_name)
     cx = snprintf(command+strlen(command), FLEN - strlen(command), "> errors 2>&1");
     if (cx <= 0 || cx >= FLEN - strlen(command))
     {
-        fprintf(stderr, "an error occurred while creating an executable command\n");
-        sprintf(ans, "an error occurred while creating an executable command\n");
+        fputs(ANS_ERR_EXE, stderr);
+        sprintf(ans, ANS_ERR_EXE);
         write(sockfd, ans, sizeof(ans));
         return 1;
     }
@@ -107,14 +111,14 @@ int compile(int sockfd, char* serv_name)
     status = system(command);
     if (status == 0)
     {
-        write(sockfd, "compilation complited successfully\n", sizeof("compilation complited successfully\n"));
-        printf("compilation complited successfully\n");
+        write(sockfd, ANS_COMPILE_0, sizeof(ANS_COMPILE_0));
+        printf(ANS_COMPILE_0);
         send_errors(sockfd);
         return 0;
     }
 
-    write(sockfd, "compilation failed\n", sizeof("compilation failed\n"));
-    printf("compilation failed\n");
+    write(sockfd, ANS_COMPILE_1, sizeof(ANS_COMPILE_1));
+    printf(ANS_COMPILE_1);
     send_errors(sockfd);
     return 0;
 }
@@ -138,7 +142,7 @@ int get_number_of_files(int connfd, long int* number)
   
 int main(int argc, char** argv) 
 { 
-    long int i, number_of_files, PORT = 1234;
+    long int i, number_of_files, PORT = RCC_PORT_DEFAULT;
     int sockfd, connfd; 
     struct sockaddr_in servaddr; 
     char serv_name[FLEN] = "serv_";
@@ -150,7 +154,7 @@ int main(int argc, char** argv)
         PORT = strtol(argv[2], NULL, 10);
         if(PORT < 0 || PORT > 65535)
         {
-            fprintf(stderr, "fatal error. wrong port.\n");
+            fputs("fatal error. wrong port.\n", stderr);
             return 2;
         }
     }
@@ -159,8 +163,8 @@ int main(int argc, char** argv)
     sockfd = socket(AF_INET, SOCK_STREAM, 0); 
     if (sockfd < 0) 
     { 
-        fprintf(stderr, "fatal error: socket creation failed.\n"); 
-        return 1; 
+        fputs("fatal error: socket creation failed.\n", stderr); 
+        return RCC_SOCK_FAIL; 
     } 
     else
         printf("Socket successfully created.\n");  
@@ -174,8 +178,8 @@ int main(int argc, char** argv)
     // Binding newly created socket to given IP and verification 
     if (bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1) 
     { 
-        fprintf(stderr, "fatal error: socket bind failed.\n"); 
-        return 2; 
+        fputs("fatal error: socket bind failed.\n", stderr); 
+        return RCC_BIND_FAIL; 
     } 
     else
         printf("Socket successfully binded.\n"); 
@@ -183,8 +187,8 @@ int main(int argc, char** argv)
     // Now server is ready to listen and verification 
     if (listen(sockfd, LISTEN_BACKLOG) == -1) 
     { 
-        fprintf(stderr, "fatal error: Listen failed.\n"); 
-        return 3; 
+        fputs("fatal error: Listen failed.\n", stderr); 
+        return RCC_LISTEN_FAIL; 
     } 
     else
         printf("Server listening.\n"); 
@@ -193,39 +197,34 @@ int main(int argc, char** argv)
     connfd = accept(sockfd, NULL, NULL); 
     if (connfd == -1) 
     { 
-        fprintf(stderr, "fatal error: server acccept failed.\n"); 
-        return 4; 
+        fputs("fatal error: server acccept failed.\n", stderr); 
+        return RCC_ACCEPT_FAIL; 
     } 
     else
         printf("server acccept the client.\n"); 
   
     if(get_number_of_files(connfd, &number_of_files) != 0)
-        return 6;
+        return RCC_UNEXPEC_VAL;
 
     //getting files
-    if (stat("/source", &st) == 0)
-    {
-        chdir("source");
-    }
-    else 
-    {
+    if (stat("/source", &st) != 0)
         mkdir("source", 0777);
-        chdir("source");
-    }
+    chdir("source");
+
     i = 0;
     while(i < number_of_files)
     {
         bzero(serv_name, sizeof(serv_name));
         if (get_name(connfd, serv_name) != 0)
-            return 5;
+            return RCC_RECEIVE_FAIL;
 
         if (get_file(connfd, serv_name) != 0)
-            return 5;
+            return RCC_RECEIVE_FAIL;
         i++;
     }    
 
     if (compile(connfd, serv_name) != 0)
-        return 5;
+        return RCC_COMPILE_ERROR;
 
     close(sockfd); 
     return 0;
