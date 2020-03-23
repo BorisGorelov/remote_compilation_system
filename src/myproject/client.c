@@ -1,27 +1,10 @@
-//usage: ./client [-d <ip>] [-p <port>] file[s]
-#include <netdb.h> 
-#include <stdio.h> 
-#include <stdlib.h> 
-#include <string.h> 
-#include <sys/socket.h> 
-#include <stdbool.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#define LEN 70 
-#define FLEN 256
-
-void get_answer(int sockfd)
-{
-    char ans[FLEN]; 
-    read(sockfd, ans, sizeof(ans)); 
-    printf("From Server: %s\n", ans);
-}
+#include "source.h"
 
 int send_file(int sockfd, char* name)
 {
     FILE* file_ptr = fopen(name, "r");
     char fbuff[FLEN];
-    char buf[LEN];
+    char buf[FLEN];
 
     if(file_ptr == NULL)
     {
@@ -31,11 +14,13 @@ int send_file(int sockfd, char* name)
 
     //send name, get response
     write(sockfd, name, sizeof(name));
-    read(sockfd, buf, sizeof(buf));
+    if(safe_answer(sockfd, buf, FLEN) != 0)
+        return 1;
 
     if(strncmp("1.", buf, 2) == 0)
     {
         fputs("error sending the name to the server\n", stderr);
+        fclose(file_ptr);
         return 2;
     }
     else if(strncmp("0.", buf, 2) == 0)
@@ -52,6 +37,7 @@ int send_file(int sockfd, char* name)
     else 
     {
         fputs("error: unexpected response\n", stderr);
+        fclose(file_ptr);
         return 3;
     }
 }
@@ -69,11 +55,13 @@ int get_errors(int sockfd)
     }
 
     //recieving file
-    read(sockfd, fbuff, sizeof(fbuff));
+    if(safe_read(sockfd, fbuff, FLEN) != 0)
+        return 1;
     while(strncmp("^^^^^", fbuff, 5) != 0)
     {
         fputs(fbuff, file_ptr);
-        read(sockfd, fbuff, sizeof(fbuff));
+        if(safe_read(sockfd, fbuff, FLEN) != 0)
+            return 2;
     }
     fclose(file_ptr);
     return 0;
@@ -106,6 +94,11 @@ int print_errors(int sockfd)
     return 0;
 }
 
+void usage()
+{
+    printf("usage: ./client [-d <ip>] [-p <port>] file[s]");
+}
+
 int main(int argc, char** argv) 
 { 
     int sockfd, number_of_files, i, check; 
@@ -113,7 +106,14 @@ int main(int argc, char** argv)
     struct sockaddr_in servaddr; 
     long int PORT = 1234;
     char IP[LEN] = "127.0.0.1";
-    char buf[LEN];
+    char buf[FLEN];
+
+    setlocale(LC_ALL, "");
+    if(argc < 2 /*|| second option is -h*/)
+    {
+        usage();
+        return 7;
+    }
 
     //check if user want to change default ip or port
     for (i = 1; i < argc; ++i)
@@ -149,7 +149,8 @@ int main(int argc, char** argv)
     } 
     else
         printf("Socket successfully created, socket = %d\n", sockfd); 
-  
+
+    // assign IP, PORT 
     bzero(&servaddr, sizeof(servaddr));
     servaddr.sin_family = AF_INET; 
     servaddr.sin_port = htons(PORT);
@@ -187,7 +188,6 @@ int main(int argc, char** argv)
 
     //send number of files
     number_of_files = argc - flag * 2 - 1;
-    printf("number of files: %d, i = %d, argc = %d\n", number_of_files, i, argc);
     sprintf(buf, "%d", number_of_files);
     write(sockfd, buf, sizeof(buf));
 
@@ -199,10 +199,10 @@ int main(int argc, char** argv)
     }
 
     if (get_errors(sockfd) != 0)
-        return 6;
+        return 7;
 
     if (print_errors(sockfd) != 0)
-        return 6;
+        return 8;
 
     close(sockfd); 
 

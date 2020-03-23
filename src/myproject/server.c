@@ -1,35 +1,25 @@
 //usage: ./server [-p <port>]
-#include <stdio.h> 
-#include <netdb.h> 
-#include <netinet/in.h> 
-#include <stdlib.h> 
-#include <string.h> 
-#include <sys/socket.h> 
-#include <sys/types.h>
-#include <stdbool.h> 
-#include <unistd.h>
-#include <arpa/inet.h>
-#define LEN 80 
-#define FLEN 256
-#define LISTEN_BACKLOG 50
+#include "source.h"
+#define ANS0 "0. the name is received.\n"
+#define ANS1 "1. error occurred while recieving name\n"
 
 int get_name(int sockfd, char* serv_name)
 {
-    char client_name[LEN];
+    char client_name[FLEN];
     int check;
 
-    if(read(sockfd, client_name, LEN))
-        write(sockfd, "0. the name is received.\n", sizeof("0. the name is received.\n"));
+    if(safe_read(sockfd, client_name, FLEN) == 0)
+        write(sockfd, ANS0, sizeof(ANS0));
     else
     {
-        write(sockfd, "1. error occurred while recieving name\n", sizeof("1. error occurred while recieving name\n"));
+        write(sockfd, ANS1, sizeof(ANS1));
         fputs("error while recieving name\n", stderr);
         return 1;
     }
     printf("From client: name of file: %s\n", client_name);
 
-    check = snprintf(serv_name, LEN + 5, "serv_%s", client_name);
-    if (check <= 0 || check >= LEN + 5)
+    check = snprintf(serv_name, FLEN, "serv_%s", client_name);
+    if (check <= 5 || check >= FLEN)
     {
         fputs("error occurred while creating serv_name\n", stderr);
         return 1;
@@ -51,22 +41,19 @@ int get_file(int sockfd, char* serv_name)
     printf("file was opened successfully\n");
 
     //recieving file
-    read(sockfd, fbuff, sizeof(fbuff));
-    while(strncmp("^^^^^", fbuff, 5) != 0)
-    {
-        fputs(fbuff, file_ptr);
-        read(sockfd, fbuff, sizeof(fbuff));
+    if(safe_read(sockfd, fbuff, FLEN) == 0){
+        while(strncmp("^^^^^", fbuff, 5) != 0)
+        {
+            fputs(fbuff, file_ptr);
+            if(safe_read(sockfd, fbuff, FLEN) != 0)
+                return 2;
+        }
     }
+    else return 2;
+
     printf("file was recieved\n");
     fclose(file_ptr);
     return 0;
-}
-
-void get_answer(int sockfd)
-{
-    char ans[FLEN]; 
-    read(sockfd, ans, sizeof(ans)); 
-    printf("From Client: %s\n", ans);
 }
 
 int send_errors(int sockfd)
@@ -87,7 +74,7 @@ int send_errors(int sockfd)
     fclose(file_ptr);
 
     printf("File with errors has been sent\n");
-    get_answer(sockfd);
+    safe_answer(sockfd, fbuff, FLEN);
 
     return 0;
 }
@@ -132,6 +119,22 @@ int compile(int sockfd, char* serv_name)
     return 0;
 }
 
+int get_number_of_files(int connfd, long int* number)
+{
+    char buf[FLEN];
+    if(safe_read(connfd, buf, FLEN) != 0)
+    {   
+        fputs("error while getting number of files\n", stderr);
+        return 1;
+    }
+    *number = strtol(buf, NULL, 10);
+    if(*number < 0)
+    {
+        fputs("fatal error: wrong number of files\n", stderr);
+        return 2;
+    }
+    return 0;
+}
   
 int main(int argc, char** argv) 
 { 
@@ -139,8 +142,9 @@ int main(int argc, char** argv)
     int sockfd, connfd; 
     struct sockaddr_in servaddr; 
     char serv_name[FLEN] = "serv_";
-    char buf[LEN];
+    struct stat st;
 
+    setlocale(LC_ALL, "");
     if (argc > 1 && strncmp(argv[1], "-p", 2) == 0)
     {
         PORT = strtol(argv[2], NULL, 10);
@@ -195,19 +199,20 @@ int main(int argc, char** argv)
     else
         printf("server acccept the client.\n"); 
   
-    //get number of files
-    read(connfd, buf, sizeof(buf));
-    number_of_files = strtol(buf, NULL, 10);
-    if(number_of_files < 0)
-    {
-        fprintf(stderr, "fatal error: wrong number of files\n");
+    if(get_number_of_files(connfd, &number_of_files) != 0)
         return 6;
-    }
 
     //getting files
-    system("mkdir source; cd source");
+    if (stat("/source", &st) == 0)
+    {
+        chdir("source");
+    }
+    else 
+    {
+        mkdir("source", 0777);
+        chdir("source");
+    }
     i = 0;
-    printf("number of files: %d, i = %d, argc = %d\n", number_of_files, i, argc);
     while(i < number_of_files)
     {
         bzero(serv_name, sizeof(serv_name));
