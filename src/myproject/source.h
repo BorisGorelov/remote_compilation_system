@@ -11,7 +11,9 @@
 #include <arpa/inet.h>
 #include <locale.h>
 #include <sys/stat.h>
-
+#include <ctype.h>
+#include <getopt.h>
+#include <stdint.h>
 #define LEN 80 
 #define FLEN 256
 #define LISTEN_BACKLOG 50
@@ -24,6 +26,8 @@ int safe_read(int sockfd, char* ans, long size);
 typedef enum {
     RCC_NO_FILE = 1,    // No such file or directory 
     RCC_WRONG_ARG,
+    RCC_WRONG_PORT,
+    RCC_WRONG_IP,
     RCC_SOCK_FAIL,
     RCC_INETPTON_ERROR,
     RCC_CONNECTION_FAIL,

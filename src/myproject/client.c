@@ -98,49 +98,51 @@ int print_errors(int sockfd)
 
 void usage()
 {
-    printf("usage: ./client [-d <ip>] [-p <port>] file[s]");
+    printf("usage: ./client [-d <ip>] [-p <port>] file[s]\n");
 }
 
 int main(int argc, char** argv) 
 { 
-    int sockfd, number_of_files, i, check; 
-    int flag = 0; //tracking whether the user specified a port and ip
+    int sockfd, number_of_files, i=0, check, rez=0; 
+    int flag = 0;
     struct sockaddr_in servaddr; 
     long int PORT = RCC_PORT_DEFAULT;
     char IP[LEN] = RCC_IP_DEFAULT;
     char buf[FLEN];
 
-    setlocale(LC_ALL, "");
-    if(argc < 2 /*|| second option is -h*/)
+    if(argc < 2)
     {
         usage();
         return RCC_WRONG_ARG;
     }
 
-    //check if user want to change default ip or port
-    for (i = 1; i < argc; ++i)
+	while ( (rez = getopt(argc,argv,"hp:d:")) != -1)
     {
-        if(strncmp(argv[i], "-d", 2) == 0 && i < argc - 1)
+		switch (rez)
         {
-            check = snprintf(IP, 16, "%s", argv[i+1]);
+		case 'h': 
+            usage(); 
+            return 0;
+		case 'p':
+            PORT = strtol(optarg, NULL, 10);
+            if(PORT < 0 || PORT > UINT16_MAX)
+            {
+                fputs("fatal error. wrong port.\n", stderr);
+                return RCC_WRONG_PORT;
+            }
             flag++;
+            break;
+        case 'd':
+            check = snprintf(IP, 16, "%s", argv[optind]);
             if(check <= 0 || check >= 16)
             {
                 fputs("fatal error. wrong ip.\n", stderr);
-                return 2;
+                return RCC_WRONG_IP;
             }
-        }
-        if(strncmp(argv[i], "-p", 2) == 0 && i < argc - 1)
-        {
-            PORT = strtol(argv[i+1], NULL, 10);
             flag++;
-            if(PORT < 0 || PORT > 65535)
-            {
-                fputs("fatal error. wrong port.\n", stderr);
-                return 2;
-            }
-        }   
-    }
+            break;
+        }
+	}
 
     // socket creation and verification
     sockfd = socket(AF_INET, SOCK_STREAM, 0); 
@@ -189,7 +191,7 @@ int main(int argc, char** argv)
     }
 
     //send number of files
-    number_of_files = argc - flag * 2 - 1;
+    number_of_files = argc - i;
     sprintf(buf, "%d", number_of_files);
     write(sockfd, buf, sizeof(buf));
 

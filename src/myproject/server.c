@@ -1,4 +1,3 @@
-//usage: ./server [-p <port>]
 #include "source.h"
 #define ANS0 "0. the name is received.\n"
 #define ANS1 "1. error occurred while recieving name\n"
@@ -86,26 +85,7 @@ int send_errors(int sockfd)
 int compile(int sockfd, char* serv_name)
 {
     int status;
-    int cx;
-    char ans[FLEN];
-    char command[FLEN] = "gcc -o out ";
-    cx = snprintf(command+strlen(command), FLEN - strlen(command), "*.c ");
-    if (cx <= 0 || cx >= FLEN - strlen(command))
-    {
-        fputs(ANS_ERR_EXE, stderr);
-        sprintf(ans, ANS_ERR_EXE);
-        write(sockfd, ans, sizeof(ans));
-        return 1;
-    }
-
-    cx = snprintf(command+strlen(command), FLEN - strlen(command), "> errors 2>&1");
-    if (cx <= 0 || cx >= FLEN - strlen(command))
-    {
-        fputs(ANS_ERR_EXE, stderr);
-        sprintf(ans, ANS_ERR_EXE);
-        write(sockfd, ans, sizeof(ans));
-        return 1;
-    }
+    char command[FLEN] = "gcc -o out *.c > errors 2>&1";
 
     //compile and send result
     status = system(command);
@@ -140,24 +120,39 @@ int get_number_of_files(int connfd, long int* number)
     return 0;
 }
   
+void usage()
+{
+    printf("usage: ./server [-p <port>]\n");
+}
+
 int main(int argc, char** argv) 
 { 
     long int i, number_of_files, PORT = RCC_PORT_DEFAULT;
-    int sockfd, connfd; 
+    int sockfd, connfd, rez=0; 
     struct sockaddr_in servaddr; 
     char serv_name[FLEN] = "serv_";
     struct stat st;
 
-    setlocale(LC_ALL, "");
-    if (argc > 1 && strncmp(argv[1], "-p", 2) == 0)
+	while ( (rez = getopt(argc,argv,"hp:")) != -1)
     {
-        PORT = strtol(argv[2], NULL, 10);
-        if(PORT < 0 || PORT > 65535)
+		switch (rez)
         {
-            fputs("fatal error. wrong port.\n", stderr);
-            return 2;
+		case 'h': 
+            usage(); 
+            return 0;
+		case 'p':
+            PORT = strtol(optarg, NULL, 10);
+            if(PORT < 0 || PORT > 65535)
+            {
+                fputs("fatal error. wrong port.\n", stderr);
+                return RCC_WRONG_PORT;
+            }
+            break;
+		case '?': 
+            usage(); 
+            return RCC_WRONG_ARG;
         }
-    }
+	}
 
     // socket creation and verification 
     sockfd = socket(AF_INET, SOCK_STREAM, 0); 
