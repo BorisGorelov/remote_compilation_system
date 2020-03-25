@@ -20,7 +20,7 @@ int get_name(int sockfd, char* serv_name)
     }
     printf("From client: name of file: %s\n", client_name);
 
-    check = snprintf(serv_name, FLEN, "serv_%s", client_name);
+    check = snprintf(serv_name, FLEN, "%s", client_name);
     if (check <= 5 || check >= FLEN)
     {
         fputs("error occurred while creating serv_name\n", stderr);

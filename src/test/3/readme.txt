@@ -1,0 +1,1 @@
+Test 3: One file with error: missed semicolon.

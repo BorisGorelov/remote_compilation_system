@@ -1,0 +1,1 @@
+Test 1: One file without errors and warnings.
