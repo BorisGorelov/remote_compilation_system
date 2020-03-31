@@ -20,15 +20,9 @@
 #define LISTEN_BACKLOG 50
 #define RCC_PORT_DEFAULT 1234
 #define RCC_IP_DEFAULT "127.0.0.1"
-#define SUCCESS "0"
 #define MYEOF "^^^^^"
-#define RECEIVE_ERROR fprintf(stderr, "Error: %d receiving information failed\n", \
-RCC_RECEIVE_FAIL); return RCC_RECEIVE_FAIL; 
-#define SEND_ERROR fprintf(stderr, "Error: %d sending information failed\n", \
-RCC_SEND_FAIL); return RCC_SEND_FAIL;
 
-int safe_answer(int sockfd, char* ans, long size);
-int safe_read(int sockfd, char* ans, long size);
+extern int safe_read(int sockfd, char* ans, long size);
 
 typedef enum {
     RCC_NO_FILE = 1,    // No such file or directory 
