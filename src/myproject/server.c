@@ -333,7 +333,7 @@ int main(int argc, char** argv)
     } 
     else
         printf("Server acccept the client.\n"); 
-  
+
     if (get_number_of_files(connfd, &number_of_files) != 0)
         return RCC_UNEXPEC_VAL;
 

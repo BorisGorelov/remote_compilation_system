@@ -249,12 +249,6 @@ int main(int argc, char** argv)
                 fgets(password, 70, stdin);
 	            system("stty -cbreak echo");
 	            password[strcspn(password, "\n")] = 0;
-
-                /*
-                 * check if password is correct
-                 * for example 3 attempts
-                 * if okay, send version and continue
-                 */
                 break;
             case 'n':
                 number_of_files = strtol(optarg, NULL, 10);
