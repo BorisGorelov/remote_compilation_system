@@ -21,24 +21,23 @@
 #define RCC_PORT_DEFAULT 1234
 #define RCC_IP_DEFAULT "127.0.0.1"
 #define MYEOF "^^^^^"
-
 extern int safe_read(int sockfd, char* ans, long size);
 
 typedef enum {
     RCC_NO_FILE = 1,    // No such file or directory 
     RCC_WRONG_ARG,
-    RCC_SOCK_FAIL,
+    RCC_SOCK_ERROR,
     RCC_INETPTON_ERROR,
-    RCC_CONNECTION_FAIL,
+    RCC_CONNECTION_ERROR,
     RCC_UNEXPEC_VAL,
-    RCC_SEND_FAIL,
-    RCC_RECEIVE_FAIL,
-    RCC_PRINT_FAIL,
-    RCC_BIND_FAIL,
-    RCC_LISTEN_FAIL,
-    RCC_ACCEPT_FAIL,
+    RCC_SEND_ERROR,
+    RCC_RECEIVE_ERROR,
+    RCC_BIND_ERROR,
+    RCC_LISTEN_ERROR,
+    RCC_ACCEPT_ERROR,
     RCC_COMPILE_ERROR,
-    RCC_SERVER_ERROR
+    RCC_SERVER_ERROR,
+    RCC_AUTH_ERROR
 } rcc_errno_codes;
 
 #endif

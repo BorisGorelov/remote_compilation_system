@@ -11,22 +11,25 @@ static int get_file(int sockfd)
     //get file name, send response
     if (safe_read(sockfd, file_name, FLEN) != 0)
     {
-        sprintf(answer, "Error: %d receiving information failed\n", RCC_RECEIVE_FAIL);
+        sprintf(answer, "Error: %d receiving information failed \
+        (file name)\n", RCC_RECEIVE_ERROR);
         fprintf(stderr, "%s", answer);
         if (write(sockfd, answer, FLEN) == -1)
         {
-            fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
-            return RCC_SEND_FAIL;
+            fprintf(stderr, "Error: %d sending information failed \
+            (file name)\n", RCC_SEND_ERROR);
+            return RCC_SEND_ERROR;
         }
-        return RCC_RECEIVE_FAIL;
+        return RCC_RECEIVE_ERROR;
     }
 
     printf("From client: name of file: %s\n", file_name);
     sprintf(answer, "Success\n");
     if (write(sockfd, answer, FLEN) == -1)
     {
-        fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
-        return RCC_SEND_FAIL;
+        fprintf(stderr, "Error: %d sending information failed \
+        (success file name)\n", RCC_SEND_ERROR);
+        return RCC_SEND_ERROR;
     }
 
     //open file, send response
@@ -37,8 +40,9 @@ static int get_file(int sockfd)
         fprintf(stderr, "%s", answer);
         if (write(sockfd, answer, FLEN) == -1)
         {
-            fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
-            return RCC_SEND_FAIL;
+            fprintf(stderr, "Error: %d sending information failed \
+            (open file)\n", RCC_SEND_ERROR);
+            return RCC_SEND_ERROR;
         }
         return RCC_NO_FILE;
     }
@@ -46,9 +50,10 @@ static int get_file(int sockfd)
     sprintf(answer, "Success\n");
     if (write(sockfd, answer, FLEN) == -1)
     {
-        fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
+        fprintf(stderr, "Error: %d sending information failed \
+        (success open file)\n", RCC_SEND_ERROR);
         fclose(file_ptr);
-        return RCC_SEND_FAIL;
+        return RCC_SEND_ERROR;
     }
 
     //receiving file
@@ -59,31 +64,35 @@ static int get_file(int sockfd)
             fputs(buffer, file_ptr);
             if (safe_read(sockfd, buffer, FLEN) != 0)
             {
-                sprintf(answer, "Error: %d receiving information failed\n", RCC_RECEIVE_FAIL);
+                sprintf(answer, "Error: %d receiving information failed \
+                (receiving file)\n", RCC_RECEIVE_ERROR);
                 fprintf(stderr, "%s", answer);
                 if (write(sockfd, answer, FLEN) == -1)
                 {
-                    fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
+                    fprintf(stderr, "Error: %d sending information failed \
+                    (receiving file)\n", RCC_SEND_ERROR);
                     fclose(file_ptr);
-                    return RCC_SEND_FAIL;
+                    return RCC_SEND_ERROR;
                 }
                 fclose(file_ptr);
-                return RCC_RECEIVE_FAIL;
+                return RCC_RECEIVE_ERROR;
             }
         }
     }
     else
     {
-        sprintf(answer, "Error: %d receiving information failed\n", RCC_RECEIVE_FAIL);
+        sprintf(answer, "Error: %d receiving information failed \
+        (receiving file)\n", RCC_RECEIVE_ERROR);
         fprintf(stderr, "%s", answer);
         if (write(sockfd, answer, FLEN) == -1)
         {
-            fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
+            fprintf(stderr, "Error: %d sending information failed \
+            (receiving file)\n", RCC_SEND_ERROR);
             fclose(file_ptr);
-            return RCC_SEND_FAIL;
+            return RCC_SEND_ERROR;
         }
         fclose(file_ptr);
-        return RCC_RECEIVE_FAIL;
+        return RCC_RECEIVE_ERROR;
     }
     
     //file was successfully received, send response
@@ -91,9 +100,10 @@ static int get_file(int sockfd)
     sprintf(answer, "Success\n");
     if (write(sockfd, answer, FLEN) == -1)
     {
-        fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
+        fprintf(stderr, "Error: %d sending information failed \
+        (success receiving file)\n", RCC_SEND_ERROR);
         fclose(file_ptr);
-        return RCC_SEND_FAIL;
+        return RCC_SEND_ERROR;
     }
     fclose(file_ptr);
     return 0;
@@ -121,8 +131,9 @@ static int send_result_of_compilation(int sockfd)
         fprintf(stderr, "%s", buffer);
         if (write(sockfd, buffer, FLEN) == -1)
         {
-            fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
-            return RCC_SEND_FAIL;
+            fprintf(stderr, "Error: %d sending information failed \
+            (open error file)\n", RCC_SEND_ERROR);
+            return RCC_SEND_ERROR;
         }
         return RCC_NO_FILE;
     }
@@ -130,9 +141,10 @@ static int send_result_of_compilation(int sockfd)
     sprintf(buffer, "Success\n");
     if (write(sockfd, buffer, FLEN) == -1)
     {
-        fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
+        fprintf(stderr, "Error: %d sending information failed \
+        (success open error file)\n", RCC_SEND_ERROR);
         fclose(file_ptr);
-        return RCC_SEND_FAIL;
+        return RCC_SEND_ERROR;
     }
 
     //send status
@@ -141,9 +153,10 @@ static int send_result_of_compilation(int sockfd)
         sprintf(buffer, "Compilation failed\n");
         if (write(sockfd, buffer, FLEN) == -1)
         {
-            fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
+            fprintf(stderr, "Error: %d sending information failed \
+            (status of compilation)\n", RCC_SEND_ERROR);
             fclose(file_ptr);
-            return RCC_SEND_FAIL;
+            return RCC_SEND_ERROR;
         }   
     }
     else
@@ -151,9 +164,10 @@ static int send_result_of_compilation(int sockfd)
         sprintf(buffer, "Compilation complited successfully\n");
         if (write(sockfd, buffer, FLEN) == -1)
         {
-            fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
+            fprintf(stderr, "Error: %d sending information failed \
+            (status of compilation)\n", RCC_SEND_ERROR);
             fclose(file_ptr);
-            return RCC_SEND_FAIL;
+            return RCC_SEND_ERROR;
         }   
     }
 
@@ -161,30 +175,33 @@ static int send_result_of_compilation(int sockfd)
     while (fgets(buffer, FLEN, file_ptr))
         if (write(sockfd, buffer, FLEN) == -1)
         {
-            fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
+            fprintf(stderr, "Error: %d sending information failed \
+            (errors)\n", RCC_SEND_ERROR);
             fclose(file_ptr);
-            return RCC_SEND_FAIL;
+            return RCC_SEND_ERROR;
         }
     
     if (write(sockfd, MYEOF, sizeof(MYEOF)) == -1)
     {
-        fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
+        fprintf(stderr, "Error: %d sending information failed \
+        (end of errors)\n", RCC_SEND_ERROR);
         fclose(file_ptr);
-        return RCC_SEND_FAIL;
+        return RCC_SEND_ERROR;
     }
 
     //get response about file delivery
     if (safe_read(sockfd, buffer, FLEN) != 0)
     {
-        fprintf(stderr, "Error: %d receiving information failed\n", RCC_RECEIVE_FAIL);
+        fprintf(stderr, "Error: %d receiving information failed \
+        (error file delivery)\n", RCC_RECEIVE_ERROR);
         fclose(file_ptr);
-        return RCC_RECEIVE_FAIL;
+        return RCC_RECEIVE_ERROR;
     }
     if (strncmp(buffer, "Success\n", 8) != 0)
     {
         fprintf(stderr, "From client: %s", buffer);
         fclose(file_ptr);
-        return RCC_SEND_FAIL;
+        return RCC_SEND_ERROR;
     }
 
     fclose(file_ptr);
@@ -200,13 +217,15 @@ static int get_number_of_files(int connfd, long* number)
     if (safe_read(connfd, buffer, FLEN) != 0)
     {   
         fputs("Error: while getting number of files\n", stderr);
-        sprintf(buffer, "Error: %d receiving information failed\n", RCC_RECEIVE_FAIL);
+        sprintf(buffer, "Error: %d receiving information failed \
+        (number of files)\n", RCC_RECEIVE_ERROR);
         if (write(connfd, buffer, FLEN) == -1)
         {
-            fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
-            return RCC_SEND_FAIL;
+            fprintf(stderr, "Error: %d sending information failed \
+            (number of files)\n", RCC_SEND_ERROR);
+            return RCC_SEND_ERROR;
         }
-        return RCC_RECEIVE_FAIL;
+        return RCC_RECEIVE_ERROR;
     }
     *number = strtol(buffer, NULL, 10);
 
@@ -217,8 +236,9 @@ static int get_number_of_files(int connfd, long* number)
         sprintf(buffer, "Error: %d wrong number of files\n", RCC_WRONG_ARG);
         if (write(connfd, buffer, FLEN) == -1)
         {
-            fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
-            return RCC_SEND_FAIL;
+            fprintf(stderr, "Error: %d sending information failed \
+            (wrong number of files)\n", RCC_SEND_ERROR);
+            return RCC_SEND_ERROR;
         }
         return RCC_WRONG_ARG;
     }
@@ -226,10 +246,148 @@ static int get_number_of_files(int connfd, long* number)
     sprintf(buffer, "Success\n");
     if (write(connfd, buffer, FLEN) == -1)
     {
-        fprintf(stderr, "Error: %d sending information failed\n", RCC_SEND_FAIL);
-        return RCC_SEND_FAIL;
+        fprintf(stderr, "Error: %d sending information failed \
+        (success number of files)\n", RCC_SEND_ERROR);
+        return RCC_SEND_ERROR;
     }
     return 0;
+}
+
+static int authorization(int connfd, char* version, \
+char* passwords_file_name)
+{
+    char buffer[FLEN];
+    char answer[FLEN];
+    char username[FLEN];
+    char password[FLEN];
+    int check;
+    FILE* pass_ptr;
+
+    //get user status, send response
+    if (safe_read(connfd, buffer, FLEN) != 0)
+    {   
+        fputs("Error: while getting user status\n", stderr);
+        sprintf(answer, "Error: %d receiving information failed \
+        (user status)\n", RCC_RECEIVE_ERROR);
+        if (write(connfd, answer, FLEN) == -1)
+        {
+            fprintf(stderr, "Error: %d sending information failed \
+            (user status)\n", RCC_SEND_ERROR);
+            return RCC_SEND_ERROR;
+        }
+        return RCC_RECEIVE_ERROR;
+    }
+    sprintf(answer, "Success\n");
+    if (write(connfd, answer, FLEN) == -1)
+    {
+        fprintf(stderr, "Error: %d sending information failed \
+        (success user status)\n", RCC_SEND_ERROR);
+        return RCC_SEND_ERROR;
+    }
+
+    //if user is regular, return 
+    if (strncmp(buffer, "regular_user", 12) == 0)
+    {
+        printf("User is regular\n");
+        return 0;
+    }
+
+    //user is root, get username and password
+    printf("User is root\n");
+    if (safe_read(connfd, username, FLEN) != 0)
+    {   
+        fputs("Error: while getting username\n", stderr);
+        sprintf(answer, "Error: %d receiving information failed \
+        (username)\n", RCC_RECEIVE_ERROR);
+        if (write(connfd, answer, FLEN) == -1)
+        {
+            fprintf(stderr, "Error: %d sending information failed \
+            (username)\n", RCC_SEND_ERROR);
+            return RCC_SEND_ERROR;
+        }
+        return RCC_RECEIVE_ERROR;
+    }
+    if (safe_read(connfd, password, FLEN) != 0)
+    {   
+        fputs("Error: while getting password\n", stderr);
+        sprintf(answer, "Error: %d receiving information failed \
+        (password)\n", RCC_RECEIVE_ERROR);
+        if (write(connfd, answer, FLEN) == -1)
+        {
+            fprintf(stderr, "Error: %d sending information failed \
+            (password)\n", RCC_SEND_ERROR);
+            return RCC_SEND_ERROR;
+        }
+        return RCC_RECEIVE_ERROR;
+    }
+
+    //open file with passwords
+    pass_ptr = fopen(passwords_file_name, "r");
+    if (pass_ptr == NULL)
+    {
+        check = snprintf(answer, FLEN, "Error: %d unable to open file \
+        with passwords %s\n", RCC_NO_FILE, passwords_file_name);
+        if (check >= FLEN)
+        {
+            sprintf(answer, "Error: %d too long name of file\n", RCC_UNEXPEC_VAL);
+            fprintf(stderr, "%s", answer);
+            if (write(connfd, answer, FLEN) == -1)
+            {
+                fprintf(stderr, "Error: %d sending information failed \
+                (long file name)\n", RCC_SEND_ERROR);
+                return RCC_SEND_ERROR;
+            }
+            return RCC_UNEXPEC_VAL;
+        }
+        fprintf(stderr, "%s", answer);
+        if (write(connfd, answer, FLEN) == -1)
+        {
+            fprintf(stderr, "Error: %d sending information failed \
+            (file opening)\n", RCC_SEND_ERROR);
+            return RCC_SEND_ERROR;
+        }
+        return RCC_NO_FILE;
+    }
+
+    //data validation
+    while (fgets(buffer, FLEN, pass_ptr))
+	{
+		buffer[strcspn(buffer, "\n")] = 0;
+        if (strncmp(buffer, username, strlen(username)) == 0)
+        {
+            fgets(buffer, FLEN, pass_ptr);
+            buffer[strcspn(buffer, "\n")] = 0;
+            if (strncmp(buffer, password, strlen(password)) == 0)
+            {
+                sprintf(answer, "Success\n");
+                if (write(connfd, answer, FLEN) == -1)
+                {
+                    fprintf(stderr, "Error: %d sending information failed \
+                    (success data validation)\n", RCC_SEND_ERROR);
+                    return RCC_SEND_ERROR;
+                }
+
+                //authorization complete, send version
+                if (write(connfd, version, LEN) != 0)
+                {
+                    fprintf(stderr, "Error: %d sending information failed \
+                    (version)\n", RCC_SEND_ERROR);
+                    return RCC_SEND_ERROR;
+                }
+                return 0;
+            }
+        }
+	}
+
+    //wrong username or password
+    sprintf(answer, "Error: %d wrong username or password\n", RCC_WRONG_ARG);
+    if (write(connfd, answer, FLEN) == -1)
+    {
+        fprintf(stderr, "Error: %d sending information failed \
+        (wrong auth data)\n", RCC_SEND_ERROR);
+        return RCC_SEND_ERROR;
+    }
+    return RCC_WRONG_ARG;
 }
   
 static void usage()
@@ -249,8 +407,8 @@ int main(int argc, char** argv)
     int check;                              //used in snprintf to check result
     struct sockaddr_in servaddr; 
     struct stat st;                         //used in stat call
-    char passwords[FLEN] = "passwords.txt";
-    FILE* passwords_ptr;
+    char passwords_file_name[FLEN] = "passwords.txt";
+    char version[LEN] = "0.2";
 
 	while ((rez = getopt(argc,argv,"hp:a:")) != -1)
     {
@@ -268,7 +426,7 @@ int main(int argc, char** argv)
             }
             break;
         case 'a':
-            check = snprintf(passwords, FLEN, "%s", optarg);
+            check = snprintf(passwords_file_name, FLEN, "%s", optarg);
             if (check <= 2 || check >= FLEN)
             {
                 fprintf(stderr, "Error: %d Wrong file name\n", RCC_WRONG_ARG);
@@ -283,19 +441,12 @@ int main(int argc, char** argv)
         }
 	}
 
-    passwords_ptr = fopen(passwords, "r");
-    if (passwords_ptr == NULL)
-    {
-        fprintf(stderr, "Error: %d Wrong password file\n", RCC_NO_FILE);
-        return RCC_NO_FILE;
-    }
-
     // socket creation and verification 
     sockfd = socket(AF_INET, SOCK_STREAM, 0); 
     if (sockfd < 0) 
     { 
         fputs("Error: socket creation failed.\n", stderr); 
-        return RCC_SOCK_FAIL; 
+        return RCC_SOCK_ERROR; 
     } 
     else
         printf("Socket successfully created.\n");  
@@ -310,7 +461,7 @@ int main(int argc, char** argv)
     if (bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1) 
     { 
         fputs("Error: socket bind failed.\n", stderr); 
-        return RCC_BIND_FAIL; 
+        return RCC_BIND_ERROR; 
     } 
     else
         printf("Socket successfully binded.\n"); 
@@ -319,7 +470,7 @@ int main(int argc, char** argv)
     if (listen(sockfd, LISTEN_BACKLOG) == -1) 
     { 
         fputs("Error: Listen failed.\n", stderr); 
-        return RCC_LISTEN_FAIL; 
+        return RCC_LISTEN_ERROR; 
     } 
     else
         printf("Server listening.\n"); 
@@ -329,10 +480,13 @@ int main(int argc, char** argv)
     if (connfd == -1) 
     { 
         fputs("Error: server acccept failed.\n", stderr); 
-        return RCC_ACCEPT_FAIL; 
+        return RCC_ACCEPT_ERROR; 
     } 
     else
         printf("Server acccept the client.\n"); 
+
+    if (authorization(connfd, version, passwords_file_name) != 0)
+        return RCC_AUTH_ERROR;
 
     if (get_number_of_files(connfd, &number_of_files) != 0)
         return RCC_UNEXPEC_VAL;
@@ -348,7 +502,7 @@ int main(int argc, char** argv)
     while (i < number_of_files)
     {
         if (get_file(connfd) != 0)
-            return RCC_RECEIVE_FAIL;
+            return RCC_RECEIVE_ERROR;
         i++;
     }    
 
