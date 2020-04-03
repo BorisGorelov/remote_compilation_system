@@ -127,7 +127,7 @@ static int get_result_of_compilation(int sockfd)
         return RCC_SERVER_ERROR;
     }
 
-    //receiving file with errors
+    //receiving result file
     if (safe_read(sockfd, buffer, FLEN) == 0)
     {
         while (strncmp(MYEOF, buffer, 5) != 0)
@@ -136,12 +136,12 @@ static int get_result_of_compilation(int sockfd)
             if (safe_read(sockfd, buffer, FLEN) != 0)
             {
                 sprintf(buffer, "Error: %d receiving information failed \
-                (file with errors)\n", RCC_RECEIVE_ERROR);
+                (result file)\n", RCC_RECEIVE_ERROR);
                 fprintf(stderr, "%s", buffer);
                 if (write(sockfd, buffer, FLEN) == -1)
                 {
                     fprintf(stderr, "Error: %d sending information failed \
-                    (file with errors)\n", RCC_SEND_ERROR);
+                    (result file)\n", RCC_SEND_ERROR);
                     fclose(file_ptr);
                     return RCC_SEND_ERROR;
                 }
@@ -153,12 +153,12 @@ static int get_result_of_compilation(int sockfd)
     else
     {
         sprintf(buffer, "Error: %d receiving information failed \
-        (file with errors)\n", RCC_RECEIVE_ERROR);
+        (result file)\n", RCC_RECEIVE_ERROR);
         fprintf(stderr, "%s", buffer);
         if (write(sockfd, buffer, FLEN) == -1)
         {
             fprintf(stderr, "Error: %d sending information failed \
-            (file with errors)\n", RCC_SEND_ERROR);
+            (result file)\n", RCC_SEND_ERROR);
             fclose(file_ptr);
             return RCC_SEND_ERROR;
         }
@@ -167,19 +167,20 @@ static int get_result_of_compilation(int sockfd)
     }
 
     //file was successfully received, send response
-    printf("File with errors was successfully received\n");
+    printf("result file was successfully received\n");
     sprintf(buffer, "Success\n");
     if (write(sockfd, buffer, FLEN) == -1)
     {
         fprintf(stderr, "Error: %d sending information failed \
-        (success file with errors)\n", RCC_SEND_ERROR);
+        (success result file)\n", RCC_SEND_ERROR);
         return RCC_SEND_ERROR;
     }
     fclose(file_ptr);
     return 0;
 }
 
-static int send_number_of_files(int sockfd, long number_of_files)
+static int send_number_of_files(int sockfd, long number_of_files, \
+bool upgrade)
 {
     char buffer[FLEN];
     sprintf(buffer, "%ld", number_of_files);
@@ -202,6 +203,33 @@ static int send_number_of_files(int sockfd, long number_of_files)
         fprintf(stderr, "From server: %s", buffer);
         return RCC_RECEIVE_ERROR;
     }
+
+    //send upgrade flag
+    if (upgrade == true)
+        sprintf(buffer, "Upgrade");
+    else
+        sprintf(buffer, "Common");
+
+    if (write(sockfd, buffer, FLEN) == -1)
+    {
+        fprintf(stderr, "Error: %d sending information failed \
+        (upgrade)\n", RCC_SEND_ERROR);
+        return RCC_SEND_ERROR;
+    }
+
+    //get response
+    if (safe_read(sockfd, buffer, FLEN) != 0)
+    {
+        fprintf(stderr, "Error: %d receiving information failed \
+        (number of files)\n", RCC_RECEIVE_ERROR);
+        return RCC_RECEIVE_ERROR;
+    }
+    if (strncmp(buffer, "Success\n", 8) != 0)
+    {
+        fprintf(stderr, "From server: %s", buffer);
+        return RCC_RECEIVE_ERROR;
+    }
+    
     return 0;
 }
 
@@ -263,7 +291,20 @@ char* password, bool root)
         return RCC_SEND_ERROR;
     }
 
-    //get response
+    //get response (auth data)
+    if (safe_read(sockfd, answer, FLEN) != 0)
+    {
+        fprintf(stderr, "Error: %d receiving information failed \
+        (authorization)\n", RCC_RECEIVE_ERROR);
+        return RCC_RECEIVE_ERROR;
+    }
+    if (strncmp(answer, "Success\n", 8) != 0)
+    {
+        fprintf(stderr, "From server: %s", answer);
+        return RCC_WRONG_ARG;
+    }
+
+    //get response (authorization)
     if (safe_read(sockfd, answer, FLEN) != 0)
     {
         fprintf(stderr, "Error: %d receiving information failed \
@@ -277,7 +318,7 @@ char* password, bool root)
     }
 
     //authorization complete, get version
-    if (safe_read(sockfd, answer, LEN) != 0)
+    if (safe_read(sockfd, answer, FLEN) != 0)
     {
         fprintf(stderr, "Error: %d receiving information failed \
         (version)\n", RCC_RECEIVE_ERROR);
@@ -289,14 +330,15 @@ char* password, bool root)
 
 static void usage()
 {
-    printf("usage: ./client [-d <ip>] [-p <port>] [-n <number of files] \
-    [-u Username].\n\
+    printf("usage: ./client [-h] [-d <ip>] [-p <port>] [-n <number of files] \
+    [-u Username] [-g]\n\
     Default options:\n\
     IP: 127.0.0.1\n\
     Port: 1234\n\
     Number of files: 1\n\
     If the -u flag is specified, the user is treated as a root\
-    and next he will be asked to enter a password.\n");
+    and next he will be asked to enter a password. -h for help.\
+    -g for upgrade which can be done only by root\n");
 }
 
 int main(int argc, char** argv) 
@@ -311,14 +353,16 @@ int main(int argc, char** argv)
     char username[LEN];
     char password[LEN];
     bool root = false;
+    bool upgrade = false;
 
-	while ((rez = getopt(argc, argv, "hd:p:n:u:")) != -1)
+	while ((rez = getopt(argc, argv, "hd:p:n:u:g")) != -1)
     {
 		switch (rez)
         {
             case 'h': 
                 usage(); 
                 return 0;
+
             case 'p':
                 PORT = strtol(optarg, NULL, 10);
                 if (PORT < 0 || PORT > UINT16_MAX)
@@ -327,6 +371,7 @@ int main(int argc, char** argv)
                     return RCC_WRONG_ARG;
                 }
                 break;
+
             case 'd':
                 check = snprintf(IP, 16, "%s", optarg);
                 if (check <= 0 || check >= 16)
@@ -335,6 +380,7 @@ int main(int argc, char** argv)
                     return RCC_WRONG_ARG;
                 }
                 break;
+
             case 'u':
                 check = snprintf(username, 70, "%s", optarg);
                 if (check <= 0 || check >= 70)
@@ -352,6 +398,7 @@ int main(int argc, char** argv)
 
                 root = true;
                 break;
+
             case 'n':
                 number_of_files = strtol(optarg, NULL, 10);
                 if (number_of_files <= 0 || number_of_files > 10)
@@ -361,6 +408,18 @@ int main(int argc, char** argv)
                     return RCC_WRONG_ARG;
                 }
                 break;
+
+            case 'g':
+                if (root == false)
+                {
+                    fprintf(stderr, "Error: %d user must be root\n", \
+                    RCC_AUTH_ERROR);
+                    usage();
+                    return RCC_AUTH_ERROR;
+                }
+                upgrade = true;
+                break;
+
             default: 
                 fprintf(stderr, "Error: %d Wrong argument\n", \
                 RCC_WRONG_ARG);
@@ -399,8 +458,9 @@ int main(int argc, char** argv)
     if (authorization(sockfd, username, password, root) != 0)
         return RCC_AUTH_ERROR;
 
-    if (send_number_of_files(sockfd, number_of_files) != 0)
+    if (send_number_of_files(sockfd, number_of_files, upgrade) != 0)
         return RCC_SEND_ERROR;
+
 
     //send files
     i = 0;

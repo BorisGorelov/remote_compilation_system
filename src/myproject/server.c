@@ -109,25 +109,29 @@ static int get_file(int sockfd)
     return 0;
 }
 
-static int compile()
+static int common_compile()
 {
     char command[FLEN] = "gcc -o out *.c > errors 2>&1";
     return system(command);
 }
 
-static int send_result_of_compilation(int sockfd)
+static int upgrade_compile()
 {
-    int result;
+    char command[FLEN] = "gcc -o ../server *.c > errors 2>&1";
+    return system(command);
+}
+
+static int send_result_of_compilation(int sockfd, int result, \
+bool upgrade)
+{
     FILE* file_ptr;
     char buffer[FLEN];
-
-    result = compile();
 
     //open file, send response
     file_ptr = fopen("errors", "r");
     if (file_ptr == NULL)
     {
-        sprintf(buffer, "Error: %d unable to open file with errors\n", RCC_NO_FILE);
+        sprintf(buffer, "Error: %d unable to open result file\n", RCC_NO_FILE);
         fprintf(stderr, "%s", buffer);
         if (write(sockfd, buffer, FLEN) == -1)
         {
@@ -137,7 +141,7 @@ static int send_result_of_compilation(int sockfd)
         }
         return RCC_NO_FILE;
     }
-    printf("File with errors was opened successfully\n");
+    printf("result file was opened successfully\n");
     sprintf(buffer, "Success\n");
     if (write(sockfd, buffer, FLEN) == -1)
     {
@@ -162,6 +166,12 @@ static int send_result_of_compilation(int sockfd)
     else
     {
         sprintf(buffer, "Compilation complited successfully\n");
+
+        if (upgrade == true)
+        {
+            sprintf(buffer, "%sServer was updated successfully!\n", buffer);
+        }
+
         if (write(sockfd, buffer, FLEN) == -1)
         {
             fprintf(stderr, "Error: %d sending information failed \
@@ -171,7 +181,7 @@ static int send_result_of_compilation(int sockfd)
         }   
     }
 
-    //send file with errors
+    //send result file
     while (fgets(buffer, FLEN, file_ptr))
         if (write(sockfd, buffer, FLEN) == -1)
         {
@@ -205,11 +215,11 @@ static int send_result_of_compilation(int sockfd)
     }
 
     fclose(file_ptr);
-    printf("File with errors has been sent\n");
+    printf("result file has been sent\n");
     return 0;
 }
 
-static int get_number_of_files(int connfd, long* number)
+static int get_number_of_files(int connfd, long* number, bool* upgrade)
 {
     char buffer[FLEN];
 
@@ -243,6 +253,35 @@ static int get_number_of_files(int connfd, long* number)
         return RCC_WRONG_ARG;
     }
 
+    sprintf(buffer, "Success\n");
+    if (write(connfd, buffer, FLEN) == -1)
+    {
+        fprintf(stderr, "Error: %d sending information failed \
+        (success number of files)\n", RCC_SEND_ERROR);
+        return RCC_SEND_ERROR;
+    }
+
+    //get upgrade flag
+    if (safe_read(connfd, buffer, FLEN) != 0)
+    {   
+        fputs("Error: while getting upgrade flag\n", stderr);
+        sprintf(buffer, "Error: %d receiving information failed \
+        (upgrade flag)\n", RCC_RECEIVE_ERROR);
+        if (write(connfd, buffer, FLEN) == -1)
+        {
+            fprintf(stderr, "Error: %d sending information failed \
+            (upgrade flag)\n", RCC_SEND_ERROR);
+            return RCC_SEND_ERROR;
+        }
+        return RCC_RECEIVE_ERROR;
+    }
+   
+    if (strncmp(buffer, "Upgrade", 7) == 0)
+        *upgrade = true;
+    else
+        *upgrade = false;
+
+    //send response
     sprintf(buffer, "Success\n");
     if (write(connfd, buffer, FLEN) == -1)
     {
@@ -321,6 +360,15 @@ char* passwords_file_name)
         return RCC_RECEIVE_ERROR;
     }
 
+    //send response
+    sprintf(answer, "Success\n");
+    if (write(connfd, answer, FLEN) == -1)
+    {
+        fprintf(stderr, "Error: %d sending information failed \
+        (success auth data)\n", RCC_SEND_ERROR);
+        return RCC_SEND_ERROR;
+    }
+
     //open file with passwords
     pass_ptr = fopen(passwords_file_name, "r");
     if (pass_ptr == NULL)
@@ -368,7 +416,8 @@ char* passwords_file_name)
                 }
 
                 //authorization complete, send version
-                if (write(connfd, version, LEN) != 0)
+                sprintf(answer, "%s", version);
+                if (write(connfd, answer, FLEN) == -1)
                 {
                     fprintf(stderr, "Error: %d sending information failed \
                     (version)\n", RCC_SEND_ERROR);
@@ -405,10 +454,12 @@ int main(int argc, char** argv)
     int sockfd, connfd;
     int rez = 0;                            //used in getopt
     int check;                              //used in snprintf to check result
+    int result;                             //compilation result
     struct sockaddr_in servaddr; 
-    struct stat st;                         //used in stat call
+    struct stat st;
     char passwords_file_name[FLEN] = "passwords.txt";
     char version[LEN] = "0.2";
+    bool upgrade = false;
 
 	while ((rez = getopt(argc,argv,"hp:a:")) != -1)
     {
@@ -488,8 +539,9 @@ int main(int argc, char** argv)
     if (authorization(connfd, version, passwords_file_name) != 0)
         return RCC_AUTH_ERROR;
 
-    if (get_number_of_files(connfd, &number_of_files) != 0)
+    if (get_number_of_files(connfd, &number_of_files, &upgrade) != 0)
         return RCC_UNEXPEC_VAL;
+
 
     //create empty directory for files
     if (stat("./source", &st) == 0)
@@ -506,7 +558,13 @@ int main(int argc, char** argv)
         i++;
     }    
 
-    if (send_result_of_compilation(connfd) != 0)
+    if (upgrade == true)
+        result = upgrade_compile();
+    else 
+        result = common_compile();
+
+
+    if (send_result_of_compilation(connfd, result, upgrade) != 0)
         return RCC_SERVER_ERROR;
 
     close(sockfd); 
