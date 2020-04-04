@@ -441,9 +441,10 @@ char* passwords_file_name)
   
 static void usage()
 {
-    printf("usage: ./server [-p <port>] [-a <file_with_passwords.txt>]\n\
+    printf("usage: ./server [-h] [-p <port>] [-a <file_with_passwords.txt>]\n\
     Default options:\n\
     Port: 1234\n\
+    -h for help.\n\
     Name of file with passwords: passwords.txt\n");
 }
 
@@ -458,7 +459,7 @@ int main(int argc, char** argv)
     struct sockaddr_in servaddr; 
     struct stat st;
     char passwords_file_name[FLEN] = "passwords.txt";
-    char version[LEN] = "0.2";
+    char version[LEN] = "0.3.1";
     bool upgrade = false;
 
 	while ((rez = getopt(argc,argv,"hp:a:")) != -1)

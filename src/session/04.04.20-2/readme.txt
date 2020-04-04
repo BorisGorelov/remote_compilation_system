@@ -1,0 +1,1 @@
+Test 2: One file with error: missed colon.

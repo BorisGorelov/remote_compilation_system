@@ -1,5 +1,0 @@
-compilation failed
-test1.c: In function ‘main’:
-test1.c:7:2: error: expected ‘;’ before ‘return’
-  return 0;
-  ^~~~~~

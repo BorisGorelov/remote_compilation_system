@@ -1,1 +1,0 @@
-Test 2: Two files without errors and warnings.

@@ -1,0 +1,16 @@
+Socket successfully created.
+Socket successfully binded.
+Server listening.
+Server acccept the client.
+User is regular
+From client: name of file: test33.h
+File was opened successfully
+File was successfully received
+From client: name of file: test32.c
+File was opened successfully
+File was successfully received
+From client: name of file: test31.c
+File was opened successfully
+File was successfully received
+result file was opened successfully
+result file has been sent

@@ -7,12 +7,26 @@ static int send_file(int sockfd)
     char buffer[FLEN];
     char answer[FLEN];
     char file_name[FLEN];
+    char path[FLEN];
+    int check;
 
-    printf("Enter the file name : ");
+    printf("Enter file path: ");
+    fgets(path, FLEN, stdin);
+  	path[strcspn(path, "\n")] = 0;
+
+    printf("Enter the file name: ");
     fgets(file_name, FLEN, stdin);
   	file_name[strcspn(file_name, "\n")] = 0;
 
-    file_ptr = fopen(file_name, "r");
+    check = snprintf(path + strlen(path), FLEN - strlen(path), "%s", file_name);
+    if (check >= FLEN || check < 2)
+    {
+        fprintf(stderr, "Error: %d wrong path or file name \
+        %s\n", RCC_NO_FILE, file_name);
+        return RCC_NO_FILE;
+    }
+
+    file_ptr = fopen(path, "r");
     if (file_ptr == NULL)
     {
         fprintf(stderr, "Error: %d unable to open the file \
