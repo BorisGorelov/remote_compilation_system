@@ -12,9 +12,15 @@
 #include <arpa/inet.h>
 #include <locale.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <ctype.h>
 #include <getopt.h>
 #include <stdint.h>
+#include <errno.h>
+#include <malloc.h>
+#include <resolv.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 #define LEN 80 
 #define FLEN 256
 #define LISTEN_BACKLOG 50
@@ -22,6 +28,9 @@
 #define RCC_IP_DEFAULT "127.0.0.1"
 #define MYEOF "^^^^^"
 extern int safe_read(int sockfd, char* ans, long size);
+extern int safe_send_file(FILE* file_ptr, SSL* ssl);
+extern int safe_get_file(FILE* file_ptr, SSL* ssl);
+extern void ShowCertificates(SSL* ssl);
 
 typedef enum {
     RCC_NO_FILE = 1,    // No such file or directory 
@@ -41,3 +50,4 @@ typedef enum {
 } rcc_errno_codes;
 
 #endif
+

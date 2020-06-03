@@ -1,6 +1,5 @@
 #include "source.h"
 
-
 static int send_file(int sockfd)
 {
     FILE* file_ptr = NULL;
@@ -247,111 +246,156 @@ bool upgrade)
     return 0;
 }
 
-static int authorization(int sockfd, char* username, \
-char* password, bool root)
+int OpenConnection(const char *IP, int PORT)
 {
-    char answer[FLEN];
+    int sockfd;
+    struct sockaddr_in servaddr;
 
-    //send user status
-    if (root == false)
-    {
-        sprintf(answer, "regular_user");
-        if (write(sockfd, answer, FLEN) == -1)
-        {
-            fprintf(stderr, "Error: %d sending information failed \
-            (user status)\n", RCC_SEND_ERROR);
-            return RCC_SEND_ERROR;
-        }
-    }
+    sockfd = socket(PF_INET, SOCK_STREAM, 0); 
+    if (sockfd < 0) 
+    { 
+        fputs("Error: socket creation failed.\n", stderr); 
+        abort();
+    } 
     else
+        printf("Socket successfully created, socket = %d\n", sockfd); 
+ 
+    bzero(&servaddr, sizeof(servaddr));
+    servaddr.sin_family = AF_INET; 
+    servaddr.sin_port = htons(PORT);
+    if (inet_pton(AF_INET, IP, &servaddr.sin_addr.s_addr) <= 0)
     {
-        sprintf(answer, "root_user");
-        if (write(sockfd, answer, FLEN) == -1)
+        fprintf(stderr, "Error: inet_pton error for %s\n", IP);
+        abort();
+    }     
+  
+    if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) < 0) 
+    { 
+        fputs("Error: connection with the server failed\n", stderr); 
+        abort();
+    } 
+    else
+        printf("Connected to the server\n"); 
+    return sockfd;
+}
+SSL_CTX* InitCTX(void)
+{
+    SSL_METHOD *method;
+    SSL_CTX *ctx;
+    OpenSSL_add_all_algorithms(); 
+    SSL_load_error_strings(); 
+    method = TLSv1_2_client_method();
+    ctx = SSL_CTX_new(method); 
+    if (ctx == NULL)
+    {
+        ERR_print_errors_fp(stderr);
+        abort();
+    }
+    return ctx;
+}
+
+static int safe_connection(int sockfd, bool auth, bool command)
+{
+    SSL_CTX *ctx;
+    SSL *ssl;
+    FILE* result;
+    FILE* tarball;
+    struct stat st;
+    char buf[BUFSIZ];
+    int bytes, check;
+    char authdata[1024];
+    char username[100];
+    char password[100];
+    char user_command[200];
+    char folder[200];
+    SSL_library_init();
+    ctx = InitCTX();
+    ssl = SSL_new(ctx);
+    SSL_set_fd(ssl, sockfd);
+    if (SSL_connect(ssl) == -1)
+    {   
+        ERR_print_errors_fp(stderr);
+        return -1;
+    }
+
+    printf("Connected with %s encryption\n", SSL_get_cipher(ssl));
+    ShowCertificates(ssl);
+
+    sprintf(buf, "%s", auth ? "auth" : "----");
+    SSL_write(ssl, buf, 10);
+    sprintf(buf, "%s", command ? "comm" : "----");
+    SSL_write(ssl, buf, 10);
+
+    if (auth)
+    {    
+        printf("Enter the User Name : ");
+        fgets(username, 99, stdin);
+  	    username[strcspn(username, "\n")] = 0;
+        SSL_write(ssl, username, 100);
+
+        printf("\n\nEnter the Password : ");
+        system("stty cbreak -echo");
+        fgets(password, 99, stdin);
+        password[strcspn(password, "\n")] = 0;
+        system("stty -cbreak echo");
+        SSL_write(ssl, password, 100);
+    } 
+    if (command)
+    {
+        printf("Enter command to execute (gcc and javac are available");
+        fgets(user_command, FLEN, stdin);
+        user_command[strcspn(user_command, "\n")] = 0;
+        if (strncmp(user_command, "gcc", 3) != 0 && strncmp(user_command, "javac", 5) != 0)
         {
-            fprintf(stderr, "Error: %d sending information failed \
-            (user status)\n", RCC_SEND_ERROR);
-            return RCC_SEND_ERROR;
-        }
-    }
-    
-    //get response
-    if (safe_read(sockfd, answer, FLEN) != 0)
-    {
-        fprintf(stderr, "Error: %d receiving information failed \
-        (user status)\n", RCC_RECEIVE_ERROR);
-        return RCC_RECEIVE_ERROR;
-    }
-    if (strncmp(answer, "Success\n", 8) != 0)
-    {
-        fprintf(stderr, "From server: %s", answer);
-        return RCC_WRONG_ARG;
+            fprintf(stderr, "wrong command\n");
+            return -1;
+        }        
+        SSL_write(ssl, user_command, 200);
     }
 
-    //if user is regular, return 
-    if (root == false)
-        return 0;
+    printf("choose folder with code\n"); 
+    fgets(folder, 200, stdin);
+    folder[strcspn(folder, "\n")] = 0;      
 
-    //user is root, send username and password
-    if (write(sockfd, username, FLEN) == -1)
-    {
-        fprintf(stderr, "Error: %d sending information failed \
-        (username)\n", RCC_SEND_ERROR);
-        return RCC_SEND_ERROR;
-    }
-    if (write(sockfd, password, FLEN) == -1)
-    {
-        fprintf(stderr, "Error: %d sending information failed \
-        (password)\n", RCC_SEND_ERROR);
-        return RCC_SEND_ERROR;
-    }
+    sprintf(buf, "tar -czvf tarball.tar.gz %s", folder);
+    printf("archive command: %s\n", buf);
+    system(buf);
+    printf("done\n");
+    tarball = fopen("tarball.tar.gz", "rb+");
+    if (safe_send_file(tarball, ssl) != 0)
+        return 1;
+    close(tarball);
+    printf("archive has been sent\n");
 
-    //get response (auth data)
-    if (safe_read(sockfd, answer, FLEN) != 0)
-    {
-        fprintf(stderr, "Error: %d receiving information failed \
-        (authorization)\n", RCC_RECEIVE_ERROR);
-        return RCC_RECEIVE_ERROR;
-    }
-    if (strncmp(answer, "Success\n", 8) != 0)
-    {
-        fprintf(stderr, "From server: %s", answer);
-        return RCC_WRONG_ARG;
-    }
+    result = fopen("result.tar.gz", "wb");
+    if (safe_get_file(result, ssl) != 0)
+        return -1;
+    close(result);
+    printf("result has been received\n");
 
-    //get response (authorization)
-    if (safe_read(sockfd, answer, FLEN) != 0)
-    {
-        fprintf(stderr, "Error: %d receiving information failed \
-        (authorization)\n", RCC_RECEIVE_ERROR);
-        return RCC_RECEIVE_ERROR;
-    }
-    if (strncmp(answer, "Success\n", 8) != 0)
-    {
-        fprintf(stderr, "From server: %s", answer);
-        return RCC_WRONG_ARG;
-    }
+    //extract an archive
+    if (stat("./result", &st) == 0)
+        system("rm -r ./result");
+    mkdir("result", 0777);
+    system("tar -xzvf result.tar.gz -C ./result");
 
-    //authorization complete, get version
-    if (safe_read(sockfd, answer, FLEN) != 0)
-    {
-        fprintf(stderr, "Error: %d receiving information failed \
-        (version)\n", RCC_RECEIVE_ERROR);
-        return RCC_RECEIVE_ERROR;
-    }
-    fprintf(stdout, "Version: %s\n", answer);
+    SSL_free(ssl);
+    close(sockfd);         
+    SSL_CTX_free(ctx);        
     return 0;
 }
 
 static void usage()
 {
     printf("usage: ./client [-h] [-d <ip>] [-p <port>] [-n <number of files] \
-    [-u Username] [-g]\n\
+    [-u] [-g] [-s]\n\
     Default options:\n\
     IP: 127.0.0.1\n\
     Port: 1234\n\
     Number of files: 1\n\
-    If the -u flag is specified, the user is treated as a root\
-    and next he will be asked to enter a password. -h for help.\
+    -u for authorization (for special abilities)\
+    -s for safe connection\
+    -h for help.\
     -g for upgrade which can be done only by root\n");
 }
 
@@ -366,10 +410,12 @@ int main(int argc, char** argv)
     char IP[LEN] = RCC_IP_DEFAULT;
     char username[LEN];
     char password[LEN];
-    bool root = false;
     bool upgrade = false;
+    bool safe = false;
+    bool auth = false;
+    bool comm = false;
 
-	while ((rez = getopt(argc, argv, "hd:p:n:u:g")) != -1)
+	while ((rez = getopt(argc, argv, "hd:p:n:ugcs")) != -1)
     {
 		switch (rez)
         {
@@ -396,21 +442,7 @@ int main(int argc, char** argv)
                 break;
 
             case 'u':
-                check = snprintf(username, 70, "%s", optarg);
-                if (check <= 0 || check >= 70)
-                {
-                    fprintf(stderr, "Error: %d Wrong \
-                    Username\n", RCC_WRONG_ARG);
-                    return RCC_WRONG_ARG;
-                }
-
-                printf("Enter the password\n");
-                system("stty cbreak -echo");
-                fgets(password, 70, stdin);
-	            system("stty -cbreak echo");
-	            password[strcspn(password, "\n")] = 0;
-
-                root = true;
+                auth = true;
                 break;
 
             case 'n':
@@ -424,14 +456,17 @@ int main(int argc, char** argv)
                 break;
 
             case 'g':
-                if (root == false)
-                {
-                    fprintf(stderr, "Error: %d user must be root\n", \
-                    RCC_AUTH_ERROR);
-                    usage();
-                    return RCC_AUTH_ERROR;
-                }
                 upgrade = true;
+                auth = true;
+                safe = true;
+                break;
+
+            case 's':
+                safe = true;
+                break;
+
+            case 'c':
+                comm = true;
                 break;
 
             default: 
@@ -442,53 +477,34 @@ int main(int argc, char** argv)
         }
 	}
 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0); 
-    if (sockfd < 0) 
-    { 
-        fputs("Error: socket creation failed.\n", stderr); 
-        return RCC_SOCK_ERROR;
-    } 
-    else
-        printf("Socket successfully created, socket = %d\n", sockfd); 
- 
-    bzero(&servaddr, sizeof(servaddr));
-    servaddr.sin_family = AF_INET; 
-    servaddr.sin_port = htons(PORT);
-    if (inet_pton(AF_INET, IP, &servaddr.sin_addr.s_addr) <= 0)
+    sockfd = OpenConnection(IP, PORT);
+    
+    if (safe)
     {
-        fprintf(stderr, "Error: inet_pton error for %s\n", IP);
-        return RCC_INETPTON_ERROR;
-    }     
-  
-    if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) < 0) 
-    { 
-        fputs("Error: connection with the server failed\n", stderr); 
-        return RCC_CONNECTION_ERROR;
-    } 
-    else
-        printf("Connected to the server\n"); 
-
-  
-    if (authorization(sockfd, username, password, root) != 0)
-        return RCC_AUTH_ERROR;
-
-    if (send_number_of_files(sockfd, number_of_files, upgrade) != 0)
-        return RCC_SEND_ERROR;
-
-
-    //send files
-    i = 0;
-    while (i < number_of_files)
-    {
-        if (send_file(sockfd) != 0)
-            return RCC_SEND_ERROR;
-        i++;
+        write(sockfd, "safe", 5);
+        safe_connection(sockfd, auth, comm);
     }
+    else
+    {
+        write(sockfd, "comm", 5);
+        if (send_number_of_files(sockfd, number_of_files, upgrade) != 0)
+            return RCC_SEND_ERROR;
 
-    if (get_result_of_compilation(sockfd) != 0)
-        return RCC_RECEIVE_ERROR;
 
-    close(sockfd); 
+        //send files
+        i = 0;
+        while (i < number_of_files)
+        {
+            if (send_file(sockfd) != 0)
+                return RCC_SEND_ERROR;
+            i++;
+        }
+
+        if (get_result_of_compilation(sockfd) != 0)
+            return RCC_RECEIVE_ERROR;
+
+        close(sockfd); 
+    }
 
     return 0;
 } 

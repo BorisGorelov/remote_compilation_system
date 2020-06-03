@@ -111,13 +111,13 @@ static int get_file(int sockfd)
 
 static int common_compile()
 {
-    char command[FLEN] = "gcc -o out *.c > errors 2>&1";
+    char command[FLEN] = "gcc -Wall -o out *.c > errors 2>&1";
     return system(command);
 }
 
 static int upgrade_compile()
 {
-    char command[FLEN] = "gcc -o ../server *.c > errors 2>&1";
+    char command[FLEN] = "gcc -Wall -o ../server *.c > errors 2>&1";
     return system(command);
 }
 
@@ -438,6 +438,256 @@ char* passwords_file_name)
     }
     return RCC_WRONG_ARG;
 }
+
+
+static int OpenListener(int PORT)
+{
+    int sockfd;
+    struct sockaddr_in servaddr;
+
+    // socket creation and verification 
+    sockfd = socket(PF_INET, SOCK_STREAM, 0); 
+    if (sockfd < 0) 
+    { 
+        fputs("Error: socket creation failed.\n", stderr); 
+        return RCC_SOCK_ERROR; 
+    } 
+    else
+        printf("Socket successfully created.\n");  
+
+    // assign IP, PORT 
+    bzero(&servaddr, sizeof(servaddr));
+    servaddr.sin_family = AF_INET; 
+    servaddr.sin_addr.s_addr = htonl(INADDR_ANY); 
+    servaddr.sin_port = htons(PORT); 
+  
+    // Binding newly created socket to given IP and verification 
+    if (bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) 
+    { 
+        fputs("Error: socket bind failed.\n", stderr); 
+        abort(); 
+    } 
+    else
+        printf("Socket successfully binded.\n"); 
+  
+    // Now server is ready to listen and verification 
+    if (listen(sockfd, LISTEN_BACKLOG) != 0) 
+    { 
+        fputs("Error: Listen failed.\n", stderr); 
+        abort(); 
+    } 
+    else
+        printf("Server listening.\n"); 
+    return sockfd;
+}
+
+
+static SSL_CTX* InitServerContext(void)
+{
+    SSL_METHOD *method;
+    SSL_CTX *context;
+    SSL_load_error_strings();
+    OpenSSL_add_all_algorithms();
+    method = TLSv1_2_server_method();
+    context = SSL_CTX_new(method);   
+    if ( context == NULL )
+    {
+        ERR_print_errors_fp(stderr);
+        abort();
+    }
+    return context;
+}
+
+static void LoadCertificates(SSL_CTX* ctx, char* CertFile, char* KeyFile)
+{
+    if (SSL_CTX_use_certificate_file(ctx, CertFile, SSL_FILETYPE_PEM) <= 0) 
+    {
+        ERR_print_errors_fp(stderr);
+        abort();
+    }
+    if (SSL_CTX_use_PrivateKey_file(ctx, KeyFile, SSL_FILETYPE_PEM) <= 0)
+    {
+        ERR_print_errors_fp(stderr);
+        abort();
+    }
+    if (!SSL_CTX_check_private_key(ctx))
+    {
+        fprintf(stderr, "Private key does not match the public certificate\n");
+        abort();
+    }
+}
+
+
+static int exec_and_send(char command[], char arch[], SSL* ssl)
+{
+    FILE* result;
+    if(system(command) != 0)
+        system("tar -czvf result.tar.gz errors");
+    else
+    {
+        chdir("../");
+        system(arch);
+    }
+    result = fopen("result.tar.gz","rb");
+    if (safe_send_file(result, ssl) != 0)
+        return 1;
+    close(result);
+    return 0;
+}
+
+static int safe_servlet(SSL* ssl, char* passwords_file_name) 
+{
+    char buf[1024];
+    char buffer[BUFSIZ];
+    int sd, bytes, check;
+    char username[100];
+    char password[100];
+    char command[200];
+    char arch[50];
+    bool auth_complete = false;
+    bool auth;
+    bool comm;
+    FILE* pass_ptr;
+    FILE* tarball;
+    FILE* result;
+    struct stat st;
+    bool make = false, mvn = false; 
+
+    if (SSL_accept(ssl) == -1)
+    {
+        ERR_print_errors_fp(stderr);
+        return -1;
+    }
+    
+    ShowCertificates(ssl);     
+    SSL_read(ssl, buf, 10);
+    auth = strncmp(buf, "auth", 4) == 0 ? 1 : 0;
+    SSL_read(ssl, buf, 10);
+    comm = strncmp(buf, "comm", 4) == 0 ? 1 : 0;
+
+    //authentication
+    if (auth)
+    {   
+        SSL_read(ssl, username, 100);
+        SSL_read(ssl, password, 100);
+
+        //open file with passwords
+        pass_ptr = fopen(passwords_file_name, "r");
+
+        //data validation
+        while (fgets(buf, FLEN, pass_ptr))
+        {
+            buf[strcspn(buf, "\n")] = 0;
+            if (strncmp(buf, username, strlen(username)) == 0)
+            {
+                fgets(buf, FLEN, pass_ptr);
+                buf[strcspn(buf, "\n")] = 0;
+                if (strncmp(buf, password, strlen(password)) == 0)
+                {
+                    SSL_write(ssl, "Success", strlen("Success"));
+                    auth_complete = true;
+                }
+            }
+        }
+        if(!auth_complete)
+        {
+            SSL_write(ssl, "wrong auth data", strlen("wrong auth data"));
+            return -1;
+        }
+
+        //change directory for user's files
+        sprintf(buf, "./%s", username);
+        if (stat(buf, &st) == 0)
+            mkdir(buf, 0777);
+        chdir(buf);
+    }
+    else 
+    {
+        //create empty directory for files
+        if (stat("./source", &st) == 0)
+            system("rm -r ./source");
+        mkdir("source", 0777);
+        chdir("source");
+    }
+
+    if(comm)
+        SSL_read(ssl, command, sizeof(command));
+    
+    //get tarball
+    sprintf(buf, "%s%s", username, "archive.tar.gz");
+    printf("archive name: %s\n", buf);
+    tarball = fopen(buf,"wb+");
+    if (safe_get_file(tarball, ssl) != 0)
+        return 1;
+    close(tarball);
+    printf("got archive\n");
+
+    //extract an archive
+    mkdir("extracted", 0777);
+    system("tar -xzvf archive.tar.gz -C ./extracted");
+    chdir("extracted");
+
+    //if user specialized command, run it
+    if (comm)
+    {
+        sprintf(arch, "tar -czvf result.tar.gz ./extracted");
+        if (exec_and_send(command, arch, ssl) == 0)
+            return 0;
+        else
+            return 1;
+    }
+
+    //run make or maven
+    if (system("find [mM]akefile") == 0)
+    {
+        make = true;
+        sprintf(buf, "%s", "make");
+    }
+    if (system("find pom.xml") == 0)
+    {
+        mvn = true;
+        sprintf(buf, "%s", "mvn clean package");
+    }
+
+    if (make || mvn)
+    {
+        sprintf(buf, "%s%s", buf, " > errors 2>&1");
+        sprintf(arch, "tar -czvf result.tar.gz ./extracted");
+        if (exec_and_send(buf, arch, ssl) == 0)
+            return 0;
+        else
+            return 1;
+    }
+    //check file extensions
+    if (system("find -name '*.c' | read") == 0)
+    //.c file have been found
+    {
+        sprintf(buf, "gcc -Wall -o out *.c > errors 2>&1");
+        sprintf(arch, "tar -czvf result.tar.gz ./out ./errors");
+        if (exec_and_send(buf, arch, ssl) == 0)
+            return 0;
+        else
+            return 1;
+    }
+    else if (system("find -name '*.java' | read") == 0)
+    {
+        sprintf(buf, "javac -d bin *.java > errors 2>&1");
+        sprintf(arch, "tar -czvf result.tar.gz ./bin ./errors");
+        if (exec_and_send(buf, arch, ssl) == 0)
+            return 0;
+        else
+            return 1;
+    }
+    else
+    {
+        fprintf(stderr, "unidentified file type\n");
+        return -1;
+    }
+    sd = SSL_get_fd(ssl);     
+    SSL_free(ssl);         
+    close(sd);          
+}
+
   
 static void usage()
 {
@@ -460,7 +710,9 @@ int main(int argc, char** argv)
     struct stat st;
     char passwords_file_name[FLEN] = "passwords.txt";
     char version[LEN] = "0.3.1";
+    char type[5];
     bool upgrade = false;
+    SSL_CTX* ctx;
 
 	while ((rez = getopt(argc,argv,"hp:a:")) != -1)
     {
@@ -493,80 +745,62 @@ int main(int argc, char** argv)
         }
 	}
 
-    // socket creation and verification 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0); 
-    if (sockfd < 0) 
-    { 
-        fputs("Error: socket creation failed.\n", stderr); 
-        return RCC_SOCK_ERROR; 
-    } 
-    else
-        printf("Socket successfully created.\n");  
+    SSL_library_init();
+    ctx = InitServerContext();
+    sockfd = OpenListener(PORT);
+    LoadCertificates(ctx, "mycert.pem", "mycert.pem");
 
-    // assign IP, PORT 
-    bzero(&servaddr, sizeof(servaddr));
-    servaddr.sin_family = AF_INET; 
-    servaddr.sin_addr.s_addr = htonl(INADDR_ANY); 
-    servaddr.sin_port = htons(PORT); 
-  
-    // Binding newly created socket to given IP and verification 
-    if (bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1) 
-    { 
-        fputs("Error: socket bind failed.\n", stderr); 
-        return RCC_BIND_ERROR; 
-    } 
-    else
-        printf("Socket successfully binded.\n"); 
-  
-    // Now server is ready to listen and verification 
-    if (listen(sockfd, LISTEN_BACKLOG) == -1) 
-    { 
-        fputs("Error: Listen failed.\n", stderr); 
-        return RCC_LISTEN_ERROR; 
-    } 
-    else
-        printf("Server listening.\n"); 
-  
-    // Accept the data packet from client and verification
-    connfd = accept(sockfd, NULL, NULL); 
-    if (connfd == -1) 
-    { 
-        fputs("Error: server acccept failed.\n", stderr); 
-        return RCC_ACCEPT_ERROR; 
-    } 
-    else
-        printf("Server acccept the client.\n"); 
+    while(1)
+    {    // Accept the data packet from client and verification
+        connfd = accept(sockfd, NULL, NULL); 
+        if (connfd == -1) 
+        { 
+            fputs("Error: server acccept failed.\n", stderr); 
+            return RCC_ACCEPT_ERROR; 
+        } 
+        else
+            printf("Server acccept the client.\n"); 
 
-    if (authorization(connfd, version, passwords_file_name) != 0)
-        return RCC_AUTH_ERROR;
+        read(connfd, type, 5);
+        if (strncmp(type, "safe", 4) == 0)
+        {
+            SSL *ssl;
+            ssl = SSL_new(ctx);
+            SSL_set_fd(ssl, connfd);
+            safe_servlet(ssl, passwords_file_name);
+        }
+        else
+        {
+            if (authorization(connfd, version, passwords_file_name) != 0)
+                return RCC_AUTH_ERROR;
 
-    if (get_number_of_files(connfd, &number_of_files, &upgrade) != 0)
-        return RCC_UNEXPEC_VAL;
+            if (get_number_of_files(connfd, &number_of_files, &upgrade) != 0)
+                return RCC_UNEXPEC_VAL;
 
+            //create empty directory for files
+            if (stat("./source", &st) == 0)
+                system("rm -r ./source");
+            mkdir("source", 0777);
+            chdir("source");
 
-    //create empty directory for files
-    if (stat("./source", &st) == 0)
-        system("rm -r ./source");
-    mkdir("source", 0777);
-    chdir("source");
+            //getting files
+            i = 0;
+            while (i < number_of_files)
+            {
+                if (get_file(connfd) != 0)
+                    return RCC_RECEIVE_ERROR;
+                i++;
+            }    
 
-    //getting files
-    i = 0;
-    while (i < number_of_files)
-    {
-        if (get_file(connfd) != 0)
-            return RCC_RECEIVE_ERROR;
-        i++;
-    }    
+            if (upgrade == true)
+                result = upgrade_compile();
+            else 
+                result = common_compile();
 
-    if (upgrade == true)
-        result = upgrade_compile();
-    else 
-        result = common_compile();
-
-
-    if (send_result_of_compilation(connfd, result, upgrade) != 0)
-        return RCC_SERVER_ERROR;
+            if (send_result_of_compilation(connfd, result, upgrade) != 0)
+                return RCC_SERVER_ERROR;
+        }      
+    }
 
     close(sockfd); 
     return 0;
