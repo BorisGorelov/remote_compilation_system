@@ -355,7 +355,8 @@ static int safe_connection(int sockfd, bool auth, bool command)
 
     printf("choose folder with code\n"); 
     fgets(folder, 200, stdin);
-    folder[strcspn(folder, "\n")] = 0;      
+    folder[strcspn(folder, "\n")] = 0;   
+    SSL_write(ssl, folder, sizeof(folder));   
 
     sprintf(buf, "tar -czvf tarball.tar.gz %s", folder);
     printf("archive command: %s\n", buf);
@@ -364,13 +365,13 @@ static int safe_connection(int sockfd, bool auth, bool command)
     tarball = fopen("tarball.tar.gz", "rb+");
     if (safe_send_file(tarball, ssl) != 0)
         return 1;
-    close(tarball);
+    fclose(tarball);
     printf("archive has been sent\n");
 
     result = fopen("result.tar.gz", "wb");
     if (safe_get_file(result, ssl) != 0)
         return -1;
-    close(result);
+    fclose(result);
     printf("result has been received\n");
 
     //extract an archive

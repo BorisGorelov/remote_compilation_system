@@ -528,10 +528,10 @@ static int exec_and_send(char command[], char arch[], SSL* ssl)
         chdir("../");
         system(arch);
     }
-    result = fopen("result.tar.gz","rb");
+    result = fopen("result.tar.gz","rb+");
     if (safe_send_file(result, ssl) != 0)
         return 1;
-    close(result);
+    fclose(result);
     return 0;
 }
 
@@ -543,6 +543,7 @@ static int safe_servlet(SSL* ssl, char* passwords_file_name)
     char username[100];
     char password[100];
     char command[200];
+    char codefolder[200];
     char arch[50];
     bool auth_complete = false;
     bool auth;
@@ -613,19 +614,21 @@ static int safe_servlet(SSL* ssl, char* passwords_file_name)
     if(comm)
         SSL_read(ssl, command, sizeof(command));
     
+    SSL_read(ssl, codefolder, sizeof(codefolder));
     //get tarball
     sprintf(buf, "%s%s", username, "archive.tar.gz");
     printf("archive name: %s\n", buf);
     tarball = fopen(buf,"wb+");
     if (safe_get_file(tarball, ssl) != 0)
         return 1;
-    close(tarball);
+    fclose(tarball);
     printf("got archive\n");
 
     //extract an archive
     mkdir("extracted", 0777);
     system("tar -xzvf archive.tar.gz -C ./extracted");
     chdir("extracted");
+    chdir(codefolder);
 
     //if user specialized command, run it
     if (comm)
@@ -638,12 +641,12 @@ static int safe_servlet(SSL* ssl, char* passwords_file_name)
     }
 
     //run make or maven
-    if (system("find [mM]akefile") == 0)
+    if (system("find -name '[mM]akefile' | read REPLY") == 0)
     {
         make = true;
         sprintf(buf, "%s", "make");
     }
-    if (system("find pom.xml") == 0)
+    if (system("find -name 'pom.xml' | read REPLY") == 0)
     {
         mvn = true;
         sprintf(buf, "%s", "mvn clean package");
@@ -659,7 +662,7 @@ static int safe_servlet(SSL* ssl, char* passwords_file_name)
             return 1;
     }
     //check file extensions
-    if (system("find -name '*.c' | read") == 0)
+    if (system("find -name '*.c' | read REPLY") == 0)
     //.c file have been found
     {
         sprintf(buf, "gcc -Wall -o out *.c > errors 2>&1");
@@ -669,9 +672,9 @@ static int safe_servlet(SSL* ssl, char* passwords_file_name)
         else
             return 1;
     }
-    else if (system("find -name '*.java' | read") == 0)
+    else if (system("find -name '*.java' | read REPLY") == 0)
     {
-        sprintf(buf, "javac -d bin *.java > errors 2>&1");
+        sprintf(buf, "javac -d bin '*.java' > errors 2>&1");
         sprintf(arch, "tar -czvf result.tar.gz ./bin ./errors");
         if (exec_and_send(buf, arch, ssl) == 0)
             return 0;

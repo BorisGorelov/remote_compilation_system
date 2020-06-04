@@ -24,6 +24,7 @@
 #define LEN 80 
 #define FLEN 256
 #define LISTEN_BACKLOG 50
+#define BUFSIZ 1024
 #define RCC_PORT_DEFAULT 1234
 #define RCC_IP_DEFAULT "127.0.0.1"
 #define MYEOF "^^^^^"

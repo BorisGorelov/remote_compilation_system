@@ -20,15 +20,20 @@ int safe_send_file(FILE* file_ptr, SSL* ssl)
         return 3;
     }       
     //read(file_ptr, buffer, BUFSIZ)
-    //fread(buffer, BUFSIZ, 1, file_ptr)
-    while (fgets(buffer, BUFSIZ, file_ptr))
+    //fgets(buffer, BUFSIZ, file_ptr);
+    int i = 0;
+    while (!feof(file_ptr))
+    {
+        fread(buffer, BUFSIZ, 1, file_ptr);
         if (SSL_write(ssl, buffer, BUFSIZ) == -1) 
         {
             perror("ssl_write");
             return 2;
         }
+        i++;
+    }
     SSL_write(ssl, MYEOF, sizeof(MYEOF));
-    printf("safe_send: myeof has been sent\n");
+    printf("safe_send: done, i = %d\n", i);
     return 0;
 }
 
@@ -46,18 +51,20 @@ int safe_get_file(FILE* file_ptr, SSL* ssl)
         perror("ssl_read");
         return 1;
     }
+    int i = 0;
     while (strncmp(buffer, MYEOF, 5) != 0)
     {
-        if(SSL_read(ssl, buffer, BUFSIZ) == -1)
+        fwrite(buffer, BUFSIZ, 1, file_ptr);
+        if((bytes = SSL_read(ssl, buffer, BUFSIZ)) == -1)
         {
             perror("ssl_read");
             return 1;
         }
         //write(file_ptr, buffer, bytes)
-        //fwrite(buffer, bytes, 1, file_ptr)
-        fputs(buffer, file_ptr);
+        //fputs(buffer, file_ptr);
+        i++;
     }
-    printf("safe_get: done\n");
+    printf("safe_get: done, i = %d\n", i);
     return 0;
 }
 
