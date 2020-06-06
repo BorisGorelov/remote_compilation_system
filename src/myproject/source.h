@@ -21,6 +21,9 @@
 #include <resolv.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <netinet/in.h>
+#include <sys/ioctl.h>
+#include <sys/time.h>
 #define LEN 80 
 #define FLEN 256
 #define LISTEN_BACKLOG 50

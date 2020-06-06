@@ -356,7 +356,7 @@ static int safe_connection(int sockfd, bool auth, bool command)
     printf("choose folder with code\n"); 
     fgets(folder, 200, stdin);
     folder[strcspn(folder, "\n")] = 0;   
-    SSL_write(ssl, folder, sizeof(folder));   
+    //SSL_write(ssl, folder, sizeof(folder));   
 
     sprintf(buf, "tar -czvf tarball.tar.gz %s", folder);
     printf("archive command: %s\n", buf);

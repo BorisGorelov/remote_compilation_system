@@ -299,6 +299,7 @@ char* passwords_file_name)
     char answer[FLEN];
     char username[FLEN];
     char password[FLEN];
+    struct stat st;
     int check;
     FILE* pass_ptr;
 
@@ -328,6 +329,11 @@ char* passwords_file_name)
     if (strncmp(buffer, "regular_user", 12) == 0)
     {
         printf("User is regular\n");
+        //create empty directory for files
+        if (stat("./source", &st) == 0)
+            system("rm -r ./source");
+        mkdir("source", 0777);
+        chdir("source");
         return 0;
     }
 
@@ -423,6 +429,11 @@ char* passwords_file_name)
                     (version)\n", RCC_SEND_ERROR);
                     return RCC_SEND_ERROR;
                 }
+
+                sprintf(buffer, "./%s", username);
+                if (stat(buffer, &st) != 0)
+                    mkdir(buffer, 0777);
+                chdir(buffer);
                 return 0;
             }
         }
@@ -439,47 +450,6 @@ char* passwords_file_name)
     return RCC_WRONG_ARG;
 }
 
-
-static int OpenListener(int PORT)
-{
-    int sockfd;
-    struct sockaddr_in servaddr;
-
-    // socket creation and verification 
-    sockfd = socket(PF_INET, SOCK_STREAM, 0); 
-    if (sockfd < 0) 
-    { 
-        fputs("Error: socket creation failed.\n", stderr); 
-        return RCC_SOCK_ERROR; 
-    } 
-    else
-        printf("Socket successfully created.\n");  
-
-    // assign IP, PORT 
-    bzero(&servaddr, sizeof(servaddr));
-    servaddr.sin_family = AF_INET; 
-    servaddr.sin_addr.s_addr = htonl(INADDR_ANY); 
-    servaddr.sin_port = htons(PORT); 
-  
-    // Binding newly created socket to given IP and verification 
-    if (bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) 
-    { 
-        fputs("Error: socket bind failed.\n", stderr); 
-        abort(); 
-    } 
-    else
-        printf("Socket successfully binded.\n"); 
-  
-    // Now server is ready to listen and verification 
-    if (listen(sockfd, LISTEN_BACKLOG) != 0) 
-    { 
-        fputs("Error: Listen failed.\n", stderr); 
-        abort(); 
-    } 
-    else
-        printf("Server listening.\n"); 
-    return sockfd;
-}
 
 
 static SSL_CTX* InitServerContext(void)
@@ -614,7 +584,7 @@ static int safe_servlet(SSL* ssl, char* passwords_file_name)
     if(comm)
         SSL_read(ssl, command, sizeof(command));
     
-    SSL_read(ssl, codefolder, sizeof(codefolder));
+    //SSL_read(ssl, codefolder, sizeof(codefolder));
     //get tarball
     sprintf(buf, "%s%s", username, "archive.tar.gz");
     printf("archive name: %s\n", buf);
@@ -628,7 +598,7 @@ static int safe_servlet(SSL* ssl, char* passwords_file_name)
     mkdir("extracted", 0777);
     system("tar -xzvf archive.tar.gz -C ./extracted");
     chdir("extracted");
-    chdir(codefolder);
+    //chdir(codefolder);
 
     //if user specialized command, run it
     if (comm)
@@ -705,7 +675,7 @@ int main(int argc, char** argv)
 { 
     long i, number_of_files;                //i is auxiliary variable
     long PORT = RCC_PORT_DEFAULT;
-    int sockfd, connfd;
+    int sockfd, connfd, rc;
     int rez = 0;                            //used in getopt
     int check;                              //used in snprintf to check result
     int result;                             //compilation result
@@ -715,7 +685,13 @@ int main(int argc, char** argv)
     char version[LEN] = "0.3.1";
     char type[5];
     bool upgrade = false;
+    bool end_server = false;
     SSL_CTX* ctx;
+    SSL *ssl;
+    struct timeval timeout;
+    fd_set master_set, working_set;
+    int listen_sd, max_sd, new_sd, desc_ready, close_conn;
+    int on = 1;
 
 	while ((rez = getopt(argc,argv,"hp:a:")) != -1)
     {
@@ -750,61 +726,157 @@ int main(int argc, char** argv)
 
     SSL_library_init();
     ctx = InitServerContext();
-    sockfd = OpenListener(PORT);
     LoadCertificates(ctx, "mycert.pem", "mycert.pem");
 
-    while(1)
-    {    // Accept the data packet from client and verification
-        connfd = accept(sockfd, NULL, NULL); 
-        if (connfd == -1) 
-        { 
-            fputs("Error: server acccept failed.\n", stderr); 
-            return RCC_ACCEPT_ERROR; 
-        } 
-        else
-            printf("Server acccept the client.\n"); 
+        // socket creation and verification 
+    sockfd = socket(PF_INET, SOCK_STREAM, 0); 
+    if (sockfd < 0) 
+    { 
+        fputs("Error: socket creation failed.\n", stderr); 
+        return RCC_SOCK_ERROR; 
+    } 
+    else
+        printf("Socket successfully created.\n");  
 
-        read(connfd, type, 5);
-        if (strncmp(type, "safe", 4) == 0)
-        {
-            SSL *ssl;
-            ssl = SSL_new(ctx);
-            SSL_set_fd(ssl, connfd);
-            safe_servlet(ssl, passwords_file_name);
-        }
-        else
-        {
-            if (authorization(connfd, version, passwords_file_name) != 0)
-                return RCC_AUTH_ERROR;
-
-            if (get_number_of_files(connfd, &number_of_files, &upgrade) != 0)
-                return RCC_UNEXPEC_VAL;
-
-            //create empty directory for files
-            if (stat("./source", &st) == 0)
-                system("rm -r ./source");
-            mkdir("source", 0777);
-            chdir("source");
-
-            //getting files
-            i = 0;
-            while (i < number_of_files)
-            {
-                if (get_file(connfd) != 0)
-                    return RCC_RECEIVE_ERROR;
-                i++;
-            }    
-
-            if (upgrade == true)
-                result = upgrade_compile();
-            else 
-                result = common_compile();
-
-            if (send_result_of_compilation(connfd, result, upgrade) != 0)
-                return RCC_SERVER_ERROR;
-        }      
+    if (setsockopt(sockfd, SOL_SOCKET,  SO_REUSEADDR,
+                   (char *)&on, sizeof(on)) < 0)
+    {
+        perror("setsockopt() failed");
+        close(sockfd);
+        abort();
     }
 
+    if (ioctl(sockfd, FIONBIO, (char *)&on) < 0);
+    {
+        perror("ioctl() failed");
+        close(sockfd);
+        abort();
+    }
+
+    // assign IP, PORT 
+    bzero(&servaddr, sizeof(servaddr));
+    servaddr.sin_family = AF_INET; 
+    servaddr.sin_addr.s_addr = htonl(INADDR_ANY); 
+    servaddr.sin_port = htons(PORT); 
+  
+    // Binding newly created socket to given IP and verification 
+    if (bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) 
+    { 
+        fputs("Error: socket bind failed.\n", stderr); 
+        close(sockfd);
+        abort(); 
+    } 
+    else
+        printf("Socket successfully binded.\n"); 
+  
+    // Now server is ready to listen and verification 
+    if (listen(sockfd, LISTEN_BACKLOG) != 0) 
+    { 
+        fputs("Error: Listen failed.\n", stderr); 
+        close(sockfd);
+        abort(); 
+    } 
+    else
+        printf("Server listening.\n"); 
+
+    FD_ZERO(&master_set);
+    max_sd = sockfd;
+    FD_SET(sockfd, &master_set);
+
+    do
+    {
+        memcpy(&working_set, &master_set, sizeof(master_set));
+        printf("Waiting on select()...\n");
+        if (desc_ready = select(max_sd + 1, &working_set, NULL, NULL, NULL) < 0)
+        {
+            perror("select failed");
+            abort();
+        }
+
+        for (i = 0; i <= max_sd && desc_ready > 0; ++i)
+        {
+            if (FD_ISSET(i, &working_set))
+            {
+                desc_ready -= 1;
+                if (i == sockfd)
+                {
+                    printf("Listening socket is readable\n");
+                    do
+                    {
+                        new_sd = accept(listen_sd, NULL, NULL);
+                        if (new_sd < 0)
+                        {
+                            if (errno != EWOULDBLOCK)
+                            {
+                                perror("accept() failed");
+                                end_server = true;
+                            }
+                            break;
+                        }
+
+                        printf("New incoming connection - %d\n", new_sd);
+                        FD_SET(new_sd, &master_set);
+                        if (new_sd > max_sd)
+                            max_sd = new_sd;
+                    } while (new_sd != -1);
+                }
+                else
+                {
+                    printf("  Descriptor %d is readable\n", i);
+                    close_conn = false;
+                    do
+                    {
+                        read(i, type, 5);
+                        if (strncmp(type, "safe", 4) == 0)
+                        {
+                            ssl = SSL_new(ctx);
+                            SSL_set_fd(ssl, i);
+                            safe_servlet(ssl, passwords_file_name);
+                        }
+                        else
+                        {
+                            if (authorization(i, version, passwords_file_name) != 0)
+                                break;
+
+                            if (get_number_of_files(i, &number_of_files, &upgrade) != 0)
+                                break;
+
+                            //getting files
+                            int j = 0;
+                            while (j < number_of_files)
+                            {
+                                if (get_file(i) != 0)
+                                    break;
+                                j++;
+                            }    
+
+                            result = common_compile();
+
+                            if (send_result_of_compilation(connfd, result, upgrade) != 0)
+                                break;
+                        }      
+                    } while (1);
+                    if (close_conn)
+                    {
+                        close(i);
+                        FD_CLR(i, &master_set);
+                        if (i == max_sd)
+                        {
+                            while (FD_ISSET(max_sd, &master_set) == 0)
+                                max_sd -= 1;
+                        }
+                    }
+                }            
+            }
+        }
+    } while (end_server == false);
+    for (i=0; i <= max_sd; ++i)
+    {
+        if (FD_ISSET(i, &master_set))
+            close(i);
+    }
+
+        
     close(sockfd); 
     return 0;
 } 
